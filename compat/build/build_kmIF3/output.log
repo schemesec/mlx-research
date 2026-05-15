@@ -1,0 +1,11 @@
+warning: pahole version differs from the one used to build the kernel
+  The kernel was built with: 130
+  You are using:             0
+conftest.c: In function ‘main’:
+conftest.c:53:24: error: implicit declaration of function ‘svc_fill_write_vector’ [-Wimplicit-function-declaration]
+   53 |                 return svc_fill_write_vector(NULL, NULL, NULL, 0);
+      |                        ^~~~~~~~~~~~~~~~~~~~~
+make[3]: *** [/usr/src/linux-headers-7.0.2-2-pve/scripts/Makefile.build:289: conftest.o] Error 1
+make[2]: *** [/usr/src/linux-headers-7.0.2-2-pve/Makefile:2110: .] Error 2
+make[1]: *** [/usr/src/linux-headers-7.0.2-2-pve/Makefile:248: __sub-make] Error 2
+make: *** [Makefile:248: __sub-make] Error 2

@@ -1,0 +1,15 @@
+warning: pahole version differs from the one used to build the kernel
+  The kernel was built with: 130
+  You are using:             0
+conftest.c: In function ‘main’:
+conftest.c:40:23: error: too many arguments to function ‘get_user_pages’
+   40 |                 ret = get_user_pages(start, nr_pages, gup_flags, page_list,
+      |                       ^~~~~~~~~~~~~~
+In file included from conftest.c:27:
+/usr/src/linux-headers-7.0.2-2-pve/include/linux/mm.h:2987:6: note: declared here
+ 2987 | long get_user_pages(unsigned long start, unsigned long nr_pages,
+      |      ^~~~~~~~~~~~~~
+make[3]: *** [/usr/src/linux-headers-7.0.2-2-pve/scripts/Makefile.build:289: conftest.o] Error 1
+make[2]: *** [/usr/src/linux-headers-7.0.2-2-pve/Makefile:2110: .] Error 2
+make[1]: *** [/usr/src/linux-headers-7.0.2-2-pve/Makefile:248: __sub-make] Error 2
+make: *** [Makefile:248: __sub-make] Error 2
