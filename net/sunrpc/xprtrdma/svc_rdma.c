@@ -282,8 +282,9 @@ static int svc_rdma_proc_init(void)
 		goto out_err;
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
-	svcrdma_table_header = register_sysctl("sunrpc/svc_rdma",
-					       svcrdma_parm_table);
+	svcrdma_table_header = register_sysctl_sz("sunrpc/svc_rdma",
+					svcrdma_parm_table,
+					ARRAY_SIZE(svcrdma_parm_table) - 1);
 #else
 	svcrdma_table_header = register_sysctl_table(svcrdma_root_table);
 #endif

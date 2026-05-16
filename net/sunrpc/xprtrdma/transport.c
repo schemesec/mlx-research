@@ -932,7 +932,9 @@ int xprt_rdma_init(void)
 #if IS_ENABLED(CONFIG_SUNRPC_DEBUG)
 	if (!sunrpc_table_header)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
-		sunrpc_table_header = register_sysctl("sunrpc", xr_tunables_table);
+		sunrpc_table_header = register_sysctl_sz("sunrpc",
+					xr_tunables_table,
+					ARRAY_SIZE(xr_tunables_table) - 1);
 #else
 		sunrpc_table_header = register_sysctl_table(sunrpc_table);
 #endif
