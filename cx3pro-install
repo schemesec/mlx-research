@@ -9,6 +9,7 @@ FW_URL_FALLBACK="${FW_URL_FALLBACK:-http://www.mellanox.com/downloads/firmware/f
 FW_DIR="${FW_DIR:-/root/cx3-fw}"
 FW_ZIP="${FW_ZIP:-$FW_DIR/fw-ConnectX3Pro-rel-2_42_5000-MCX314A-BCC_Ax-FlexBoot-3.4.752.bin.zip}"
 FW_BIN="${FW_BIN:-$FW_DIR/fw-ConnectX3Pro-rel-2_42_5000-MCX314A-BCC_Ax-FlexBoot-3.4.752.bin}"
+EXPECTED_FW_VERSION_PREFIX="${EXPECTED_FW_VERSION_PREFIX:-2.42.5}"
 INSTALL_MFT_DKMS="${INSTALL_MFT_DKMS:-1}"
 FLASH="${FLASH:-0}"
 
@@ -18,6 +19,7 @@ Usage: $0 [options]
 
 Install CX3 Pro userspace tooling and optionally verify/flash firmware.
 Kernel mlx4/RDMA modules are owned by ./install-pve7.sh, not this script.
+MST and firmware checks can run before the local mlx-research modules exist.
 
 Options:
   --no-mft-dkms       Skip kernel-mft-dkms package build/install.
@@ -59,6 +61,10 @@ need_root() {
        fi
 }
 
+flint_fw_version() {
+       awk -F: '/FW Version:/ {gsub(/^[ \t]+/, "", $2); print $2; exit}' "$1"
+}
+
 need_root
 
 echo "=== CX3 Pro setup/update ==="
@@ -66,10 +72,13 @@ echo "host=$(hostname)"
 echo "kernel=$(uname -r)"
 echo
 
+LOCAL_OFED_READY=0
 if ! modprobe --show-depends mlx4_core 2>/dev/null | grep -q '/updates/mlnx-ofed-cx3/'; then
-       echo "error: mlx4_core does not resolve to the mlx-research installed module directory" >&2
-       echo "run ./install-pve7.sh first; this script no longer installs the CX3 kernel driver" >&2
-       exit 1
+       echo "warning: mlx4_core does not resolve to the mlx-research installed module directory" >&2
+       echo "warning: firmware/MST setup will continue, but RDMA module loading will be skipped" >&2
+       echo "warning: run ./install-pve7.sh and reboot before RoCE/SR-IOV data-path testing" >&2
+else
+       LOCAL_OFED_READY=1
 fi
 
 echo "=== Installing base dependencies ==="
@@ -111,12 +120,6 @@ cd "$MFT_DIR"
 apt install -y ./DEBS/*.deb || { dpkg -i DEBS/*.deb; apt -f install -y; }
 dpkg --configure -a
 apt -f install -y
-
-echo
-echo "=== Loading installed mlx-research modules ==="
-for module in mlx4_core mlx4_en mlx4_ib ib_uverbs rdma_cm; do
-       run modprobe "$module" || true
-done
 
 echo
 echo "=== Starting MST ==="
@@ -171,6 +174,21 @@ echo "=== Firmware safety checks ==="
 flint -d "$CX3_DEV" q | tee "$FW_DIR/current-card.txt" >/dev/null
 flint -i "$FW_BIN" q | tee "$FW_DIR/candidate-image.txt" >/dev/null
 
+CURRENT_FW_VERSION="$(flint_fw_version "$FW_DIR/current-card.txt")"
+CANDIDATE_FW_VERSION="$(flint_fw_version "$FW_DIR/candidate-image.txt")"
+echo "current_fw_version=${CURRENT_FW_VERSION:-unknown}"
+echo "candidate_fw_version=${CANDIDATE_FW_VERSION:-unknown}"
+
+if ! echo "$CANDIDATE_FW_VERSION" | grep -q "^${EXPECTED_FW_VERSION_PREFIX}"; then
+       echo "error: candidate firmware is not ${EXPECTED_FW_VERSION_PREFIX}x" >&2
+       cat "$FW_DIR/candidate-image.txt"
+       exit 1
+fi
+if ! echo "$CURRENT_FW_VERSION" | grep -q "^${EXPECTED_FW_VERSION_PREFIX}"; then
+       echo "warning: current card firmware is not ${EXPECTED_FW_VERSION_PREFIX}x" >&2
+       echo "warning: no firmware will be flashed unless this script is run with --flash" >&2
+fi
+
 if ! grep -q "PSID:.*MT_1090111023" "$FW_DIR/current-card.txt"; then
        echo "error: current card PSID does not look like MT_1090111023; not flashing" >&2
        cat "$FW_DIR/current-card.txt"
@@ -189,10 +207,21 @@ echo "backup_fw=${BACKUP_FW}"
 
 echo
 echo "=== RDMA hardware check ==="
-ls /sys/class/infiniband 2>/dev/null || true
-ibv_devices || true
-rdma link || true
-lsmod | grep -E 'mlx4|rxe|rdma' || true
+if [ "$LOCAL_OFED_READY" = "1" ]; then
+       echo
+       echo "=== Loading installed mlx-research modules ==="
+       for module in mlx4_core mlx4_en mlx4_ib ib_uverbs rdma_cm; do
+               run modprobe "$module" || true
+       done
+
+       ls /sys/class/infiniband 2>/dev/null || true
+       ibv_devices || true
+       rdma link || true
+       lsmod | grep -E 'mlx4|rxe|rdma' || true
+else
+       echo "Skipped: local mlx-research modules are not installed yet."
+       echo "Run ./install-pve7.sh, reboot, then rerun this script or continue with sriov_setup/rocesetup."
+fi
 
 echo
 echo "=== Firmware flash control ==="
