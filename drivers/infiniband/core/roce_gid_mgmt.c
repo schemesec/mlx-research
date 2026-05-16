@@ -493,6 +493,9 @@ static void add_default_gids(struct ib_device *ib_dev, u8 port,
 	struct net_device *event_ndev = cookie;
 	unsigned long gid_type_mask;
 
+	if (rdma_vlan_dev_real_dev(event_ndev))
+		return;
+
 	gid_type_mask = roce_gid_type_mask_support(ib_dev, port);
 	ib_cache_gid_set_default_gid(ib_dev, port, event_ndev, gid_type_mask,
 				     IB_CACHE_GID_DEFAULT_MODE_SET);
