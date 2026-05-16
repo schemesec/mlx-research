@@ -130,6 +130,11 @@ if [ ! -f compat/config.h ]; then
 	log "run git pull to fetch tracked OFED build metadata before installing"
 	exit 1
 fi
+if [ ! -f include/linux/version.h ]; then
+	log "error: missing generated include/linux/version.h"
+	log "run git pull to fetch tracked OFED build metadata before installing"
+	exit 1
+fi
 
 if [ "$BUILD_ONLY" -ne 1 ] && [ "$(id -u)" -ne 0 ]; then
 	log "error: installing modules requires root"
