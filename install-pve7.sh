@@ -6,6 +6,7 @@ KVER="${KVER:-$(uname -r)}"
 JOBS="${JOBS:-$(nproc)}"
 INSTALL_DIR="${INSTALL_DIR:-/lib/modules/${KVER}/updates/mlnx-ofed-cx3}"
 MLNX_PYTHON="${MLNX_PYTHON:-}"
+MODULE_KCFLAGS="-mindirect-branch=keep -mfunction-return=keep"
 BUILD_ONLY=0
 NO_BUILD=0
 FORCE_KERNEL=0
@@ -150,7 +151,7 @@ if [ "$NO_BUILD" -eq 0 ]; then
 
 	log "=== build base mlx4/RDMA modules ==="
 	run make "CWD=${REPO_ROOT}" "MLNX_PYTHON=${MLNX_PYTHON}" \
-		MLNX_CFLAGS= \
+		MLNX_CFLAGS= "KCFLAGS=${MODULE_KCFLAGS}" \
 		CFLAGS_RETPOLINE= CONFIG_RETPOLINE=y \
 		CONFIG_INFINIBAND_USER_MAD=m \
 		"-j${JOBS}"
@@ -162,6 +163,7 @@ if [ "$NO_BUILD" -eq 0 ]; then
 		"OFA_DIR=${REPO_ROOT}" \
 		"SRC_DIR=${REPO_ROOT}" \
 		"KVER=${KVER}" \
+		"KCFLAGS=${MODULE_KCFLAGS}" \
 		-C net/sunrpc/xprtrdma
 	log
 
@@ -171,6 +173,7 @@ if [ "$NO_BUILD" -eq 0 ]; then
 		"OFA_DIR=${REPO_ROOT}" \
 		"SRC_DIR=${REPO_ROOT}" \
 		"KVER=${KVER}" \
+		"KCFLAGS=${MODULE_KCFLAGS}" \
 		-C drivers/infiniband/ulp/iser
 	log
 else

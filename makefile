@@ -72,6 +72,8 @@ KCFLAGS += $(call cc-option,-Wno-error=frame-larger-than=)
 KCFLAGS += $(call cc-option,-Wno-error=unused-function)
 export KCFLAGS
 
+override WITH_MAKE_PARAMS += CONFIG_OBJTOOL=
+
 # Pass CFLAGS_RETPOLINE to the kernel's build system. Even if it was
 # not defined: we test there if it is empty
 export CFLAGS_RETPOLINE
