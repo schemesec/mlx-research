@@ -143,7 +143,10 @@ fi
 
 if [ "$NO_BUILD" -eq 0 ]; then
 	log "=== build base mlx4/RDMA modules ==="
-	run make "CWD=${REPO_ROOT}" "MLNX_PYTHON=${MLNX_PYTHON}" CFLAGS_RETPOLINE= CONFIG_RETPOLINE=y "-j${JOBS}"
+	run make "CWD=${REPO_ROOT}" "MLNX_PYTHON=${MLNX_PYTHON}" \
+		CFLAGS_RETPOLINE= CONFIG_RETPOLINE=y \
+		CONFIG_INFINIBAND_USER_MAD=m \
+		"-j${JOBS}"
 	log
 
 	log "=== build NFS/RDMA module ==="
