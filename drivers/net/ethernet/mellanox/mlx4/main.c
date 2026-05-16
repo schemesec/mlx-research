@@ -603,7 +603,7 @@ static int parse_array(struct param_data *pdata, char *p, long *vals, u32 n)
 
 	while (n != 0 && strlen(p)) {
 		char *t = strchr(p, ',');
-		int val_len = t - p;
+		int val_len;
 		char sval[32];
 		int ret;
 
@@ -620,7 +620,11 @@ static int parse_array(struct param_data *pdata, char *p, long *vals, u32 n)
 			return ++iter;
 		}
 
-		if (!t || t == p || val_len >= sizeof(sval))
+		if (!t)
+			return -INVALID_STR;
+
+		val_len = t - p;
+		if (t == p || val_len >= sizeof(sval))
 			return -INVALID_STR;
 
 		strncpy(sval, p, val_len);
