@@ -56,16 +56,28 @@ Configure SR-IOV boot parameters and VF VLAN setup. This does not reboot unless
 `--auto-reboot` is passed:
 
 ```bash
-./sriov_setup
+PF=enp23s0 NUM_VFS=8 VF_VLAN=20 ./sriov_setup
 reboot
+```
+
+By default, `sriov_setup` assigns stable locally administered VF MAC addresses
+derived from the PF MAC and sets each VF to VLAN 20. To provide explicit MACs,
+pass a comma-separated list:
+
+```bash
+VF_MACS=02:9a:0a:d0:90:00,02:9a:0a:d0:90:01 ./sriov_setup
 ```
 
 After the SR-IOV reboot, configure PF VLAN interfaces for RoCEv2 testing and
 print the dynamic RoCEv2 GID indices to use with perftest:
 
 ```bash
-./rocesetup
+VLAN10_IP=192.168.10.56/24 VLAN20_IP=192.168.20.56/24 ./rocesetup
 ```
+
+`rocesetup` writes a marked block into `/etc/network/interfaces` by default so
+the VLAN interfaces are persistent and visible to Proxmox networking tools. Set
+`PERSIST_INTERFACES=0` to only configure the live runtime interfaces.
 
 The installer builds with the retpoline-safe flags required by the Proxmox 7
 kernel, installs the known-good mlx4/RDMA module set into

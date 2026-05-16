@@ -9,6 +9,8 @@ VLAN20_IP="${VLAN20_IP:-192.168.20.56/24}"
 MTU="${MTU:-9000}"
 INSTALL_PACKAGES="${INSTALL_PACKAGES:-0}"
 SET_CONFIGFS_ROCE_MODE="${SET_CONFIGFS_ROCE_MODE:-1}"
+PERSIST_INTERFACES="${PERSIST_INTERFACES:-1}"
+INTERFACES_FILE="${INTERFACES_FILE:-/etc/network/interfaces}"
 
 usage() {
        cat <<EOF
@@ -27,6 +29,9 @@ Environment:
   VLAN10_IP=...         Address for VLAN10 interface.
   VLAN20_IP=...         Address for VLAN20 interface.
   MTU=...               MTU for PF and VLAN interfaces. Default: 9000.
+  PERSIST_INTERFACES=0|1
+                        Write Proxmox ifupdown config. Default: 1.
+  INTERFACES_FILE=...   ifupdown config path. Default: /etc/network/interfaces.
   SET_CONFIGFS_ROCE_MODE=0|1
                         Best-effort write of RDMA-CM default_roce_mode.
 EOF
@@ -122,6 +127,59 @@ find_rdma_dev() {
        return 1
 }
 
+write_interfaces_config() {
+       local file="$1"
+       local begin="# mlx-research roce begin"
+       local end="# mlx-research roce end"
+       local tmp
+
+       tmp="$(mktemp)"
+       cp "$file" "${file}.bak.$(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
+
+       if [ -f "$file" ]; then
+               sed "/^${begin}$/,/^${end}$/d" "$file" >"$tmp"
+       else
+               : >"$tmp"
+       fi
+
+       for iface in "$VLAN10_IF" "$VLAN20_IF"; do
+               if grep -Eq "^[[:space:]]*iface[[:space:]]+${iface}[[:space:]]" "$tmp"; then
+                       echo "error: ${iface} already has an unmanaged stanza in ${file}" >&2
+                       echo "remove or migrate that stanza before letting rocesetup manage it" >&2
+                       rm -f "$tmp"
+                       exit 1
+               fi
+       done
+
+       cat "$tmp" >"$file"
+       rm -f "$tmp"
+
+       {
+               echo
+               echo "$begin"
+               if ! grep -Eq "^[[:space:]]*iface[[:space:]]+${PARENT_IF}[[:space:]]" "$file"; then
+                       echo "auto ${PARENT_IF}"
+                       echo "iface ${PARENT_IF} inet manual"
+                       echo "    mtu ${MTU}"
+                       echo
+               fi
+               echo "auto ${VLAN10_IF}"
+               echo "iface ${VLAN10_IF} inet static"
+               echo "    address ${VLAN10_IP}"
+               echo "    mtu ${MTU}"
+               echo "    vlan-raw-device ${PARENT_IF}"
+               echo
+               echo "auto ${VLAN20_IF}"
+               echo "iface ${VLAN20_IF} inet static"
+               echo "    address ${VLAN20_IP}"
+               echo "    mtu ${MTU}"
+               echo "    vlan-raw-device ${PARENT_IF}"
+               echo "$end"
+       } >>"$file"
+
+       echo "persisted_ifupdown_config=${file}"
+}
+
 need_root
 
 echo "=== CX3 Pro RoCEv2 setup ==="
@@ -169,6 +227,10 @@ run ip link set "$PARENT_IF" mtu "$MTU"
 
 VLAN10_IF="${PARENT_IF}.${VLAN10_ID}"
 VLAN20_IF="${PARENT_IF}.${VLAN20_ID}"
+
+if [ "$PERSIST_INTERFACES" -eq 1 ]; then
+       write_interfaces_config "$INTERFACES_FILE"
+fi
 
 ip link show "$VLAN10_IF" >/dev/null 2>&1 || run ip link add link "$PARENT_IF" name "$VLAN10_IF" type vlan id "$VLAN10_ID"
 ip link show "$VLAN20_IF" >/dev/null 2>&1 || run ip link add link "$PARENT_IF" name "$VLAN20_IF" type vlan id "$VLAN20_ID"

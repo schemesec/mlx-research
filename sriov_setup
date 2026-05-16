@@ -12,6 +12,8 @@ INSTALL_PACKAGES="${INSTALL_PACKAGES:-0}"
 ROCE_MODE="${ROCE_MODE:-2}"
 UD_GID_TYPE="${UD_GID_TYPE:-1}"
 MLX4_CONF="${MLX4_CONF:-/etc/modprobe.d/mlx4.conf}"
+ASSIGN_VF_MACS="${ASSIGN_VF_MACS:-1}"
+VF_MACS="${VF_MACS:-}"
 
 usage() {
        cat <<EOF
@@ -33,6 +35,8 @@ Environment:
   FW_NUM_OF_VFS=...     Firmware NUM_OF_VFS target. Default: 32.
   ROCE_MODE=...         mlx4 roce_mode value. Default: 2.
   UD_GID_TYPE=...       mlx4 ud_gid_type value. Default: 1.
+  ASSIGN_VF_MACS=0|1    Assign stable VF MACs. Default: 1.
+  VF_MACS=...           Optional comma-separated VF MAC list.
 EOF
 }
 
@@ -82,6 +86,24 @@ need_cmd() {
        fi
 }
 
+vf_mac_from_pf() {
+       local pf="$1"
+       local idx="$2"
+       local pf_mac
+       local o1 o2 o3 o4 o5 o6
+
+       pf_mac="$(cat "/sys/class/net/${pf}/address")"
+       IFS=: read -r o1 o2 o3 o4 o5 o6 <<EOF_MAC
+${pf_mac}
+EOF_MAC
+       printf '02:%s:%s:%s:%s:%02x\n' "$o3" "$o4" "$o5" "$o6" "$idx"
+}
+
+vf_mac_from_list() {
+       local idx="$1"
+       printf '%s\n' "$VF_MACS" | tr ',' '\n' | awk -v n="$((idx + 1))" 'NR == n {gsub(/^[ \t]+|[ \t]+$/, ""); print; exit}'
+}
+
 need_root
 
 echo "=== CX3 Pro SR-IOV setup ==="
@@ -92,6 +114,7 @@ echo "vf_vlan=${VF_VLAN}"
 echo "fw_num_of_vfs=${FW_NUM_OF_VFS}"
 echo "enable_iommu_grub=${ENABLE_IOMMU_GRUB}"
 echo "acs_override=${ACS_OVERRIDE}"
+echo "assign_vf_macs=${ASSIGN_VF_MACS}"
 echo
 
 if [ "$INSTALL_PACKAGES" -eq 1 ]; then
@@ -206,11 +229,32 @@ set -euo pipefail
 PF="${PF:-enp23s0}"
 NUM_VFS="${NUM_VFS:-8}"
 VF_VLAN="${VF_VLAN:-20}"
+ASSIGN_VF_MACS="${ASSIGN_VF_MACS:-1}"
+VF_MACS="${VF_MACS:-}"
+
+vf_mac_from_pf() {
+       local pf="$1"
+       local idx="$2"
+       local pf_mac
+       local o1 o2 o3 o4 o5 o6
+
+       pf_mac="$(cat "/sys/class/net/${pf}/address")"
+       IFS=: read -r o1 o2 o3 o4 o5 o6 <<EOF_MAC
+${pf_mac}
+EOF_MAC
+       printf '02:%s:%s:%s:%s:%02x\n' "$o3" "$o4" "$o5" "$o6" "$idx"
+}
+
+vf_mac_from_list() {
+       local idx="$1"
+       printf '%s\n' "$VF_MACS" | tr ',' '\n' | awk -v n="$((idx + 1))" 'NR == n {gsub(/^[ \t]+|[ \t]+$/, ""); print; exit}'
+}
 
 echo "Applying VF VLANs"
 echo "PF=$PF"
 echo "NUM_VFS=$NUM_VFS"
 echo "VF_VLAN=$VF_VLAN"
+echo "ASSIGN_VF_MACS=$ASSIGN_VF_MACS"
 
 modprobe mlx4_en || true
 
@@ -222,7 +266,14 @@ done
 ip link set "$PF" up
 
 for i in $(seq 0 $((NUM_VFS - 1))); do
-       ip link set "$PF" vf "$i" vlan "$VF_VLAN"
+       vf_mac=""
+       if [ "$ASSIGN_VF_MACS" = "1" ]; then
+               vf_mac="$(vf_mac_from_list "$i")"
+               [ -n "$vf_mac" ] || vf_mac="$(vf_mac_from_pf "$PF" "$i")"
+               ip link set "$PF" vf "$i" mac "$vf_mac" vlan "$VF_VLAN"
+       else
+               ip link set "$PF" vf "$i" vlan "$VF_VLAN"
+       fi
        ip link set "$PF" vf "$i" spoofchk on || true
 done
 
@@ -247,6 +298,8 @@ RemainAfterExit=yes
 Environment=PF=${PF}
 Environment=NUM_VFS=${NUM_VFS}
 Environment=VF_VLAN=${VF_VLAN}
+Environment=ASSIGN_VF_MACS=${ASSIGN_VF_MACS}
+Environment=VF_MACS=${VF_MACS}
 ExecStart=/usr/local/sbin/cx3pro-apply-vf-vlans.sh
 
 [Install]
