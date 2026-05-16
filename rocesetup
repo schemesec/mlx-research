@@ -1,0 +1,214 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PARENT_IF="${PARENT_IF:-enp23s0}"
+VLAN10_ID="${VLAN10_ID:-10}"
+VLAN20_ID="${VLAN20_ID:-20}"
+VLAN10_IP="${VLAN10_IP:-192.168.10.56/24}"
+VLAN20_IP="${VLAN20_IP:-192.168.20.56/24}"
+MTU="${MTU:-9000}"
+INSTALL_PACKAGES="${INSTALL_PACKAGES:-0}"
+SET_CONFIGFS_ROCE_MODE="${SET_CONFIGFS_ROCE_MODE:-1}"
+
+usage() {
+       cat <<EOF
+Usage: $0 [options]
+
+Configure CX3 Pro RoCE VLAN interfaces and print GID/test hints.
+
+Options:
+  --install-packages    Install rdma-core/perftest tooling before setup.
+  -h, --help            Show this help.
+
+Environment:
+  PARENT_IF=...         Parent Ethernet PF. Default: enp23s0.
+  VLAN10_ID=...         First VLAN ID. Default: 10.
+  VLAN20_ID=...         Second VLAN ID. Default: 20.
+  VLAN10_IP=...         Address for VLAN10 interface.
+  VLAN20_IP=...         Address for VLAN20 interface.
+  MTU=...               MTU for PF and VLAN interfaces. Default: 9000.
+  SET_CONFIGFS_ROCE_MODE=0|1
+                        Best-effort write of RDMA-CM default_roce_mode.
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+       case "$1" in
+       --install-packages)
+               INSTALL_PACKAGES=1
+               ;;
+       -h|--help)
+               usage
+               exit 0
+               ;;
+       *)
+               echo "error: unknown option: $1" >&2
+               usage >&2
+               exit 2
+               ;;
+       esac
+       shift
+done
+
+run() {
+       echo "+ $*"
+       "$@"
+}
+
+need_root() {
+       if [ "$(id -u)" -ne 0 ]; then
+               echo "error: this script must run as root" >&2
+               exit 1
+       fi
+}
+
+need_cmd() {
+       if ! command -v "$1" >/dev/null 2>&1; then
+               echo "error: missing command: $1" >&2
+               echo "run with --install-packages, or install the required package manually" >&2
+               exit 1
+       fi
+}
+
+show_gids() {
+       for dev in /sys/class/infiniband/*; do
+               [ -d "$dev" ] || continue
+               devname="$(basename "$dev")"
+               for portdir in "$dev"/ports/*; do
+                       [ -d "$portdir/gids" ] || continue
+                       port="$(basename "$portdir")"
+                       for gidfile in "$portdir"/gids/*; do
+                               idx="$(basename "$gidfile")"
+                               gid="$(cat "$gidfile" 2>/dev/null || true)"
+                               [ -n "$gid" ] || continue
+                               [ "$gid" != "0000:0000:0000:0000:0000:0000:0000:0000" ] || continue
+                               type="$(cat "$portdir/gid_attrs/types/$idx" 2>/dev/null || true)"
+                               ndev="$(cat "$portdir/gid_attrs/ndevs/$idx" 2>/dev/null || true)"
+                               ipaddr=""
+                               if [ -n "$ndev" ]; then
+                                       ipaddr="$(ip -o addr show dev "$ndev" 2>/dev/null | awk '{print $4}' | paste -sd "," -)"
+                               fi
+                               echo "dev=$devname port=$port idx=$idx type=$type ndev=$ndev ip=$ipaddr gid=$gid"
+                       done
+               done
+       done
+}
+
+find_rdma_dev() {
+       for dev in /sys/class/infiniband/*; do
+               [ -d "$dev" ] || continue
+               name="$(basename "$dev")"
+               if ! echo "$name" | grep -Eq '^(rxe|siw)'; then
+                       echo "$name"
+                       return 0
+               fi
+       done
+       return 1
+}
+
+need_root
+
+echo "=== CX3 Pro RoCEv2 setup ==="
+echo "host=$(hostname)"
+echo "parent_if=${PARENT_IF}"
+echo "vlan${VLAN10_ID}_ip=${VLAN10_IP}"
+echo "vlan${VLAN20_ID}_ip=${VLAN20_IP}"
+echo "mtu=${MTU}"
+echo
+
+if [ "$INSTALL_PACKAGES" -eq 1 ]; then
+       run apt update
+       run apt install -y rdma-core ibverbs-providers ibverbs-utils infiniband-diags perftest ethtool iproute2 pciutils
+fi
+
+need_cmd ip
+need_cmd ethtool
+need_cmd rdma
+need_cmd ibv_devices
+
+if ! modprobe --show-depends mlx4_core | grep -q '/updates/mlnx-ofed-cx3/'; then
+       echo "error: mlx4_core does not resolve to the mlx-research installed module directory" >&2
+       echo "run ./install-pve7.sh from this repo before configuring RoCE" >&2
+       exit 1
+fi
+
+for module in mlx4_core mlx4_en mlx4_ib ib_uverbs rdma_cm; do
+       run modprobe "$module"
+done
+
+if lsmod | grep -q '^rdma_rxe'; then
+       echo "error: rdma_rxe is loaded; unload software RoCE before CX3 hardware testing" >&2
+       exit 1
+fi
+
+RDMA_DEV="$(find_rdma_dev || true)"
+if [ -z "$RDMA_DEV" ]; then
+       echo "error: no hardware RDMA device found under /sys/class/infiniband" >&2
+       ls /sys/class/infiniband || true
+       exit 1
+fi
+
+run ip link set "$PARENT_IF" up
+run ip link set "$PARENT_IF" mtu "$MTU"
+
+VLAN10_IF="${PARENT_IF}.${VLAN10_ID}"
+VLAN20_IF="${PARENT_IF}.${VLAN20_ID}"
+
+ip link show "$VLAN10_IF" >/dev/null 2>&1 || run ip link add link "$PARENT_IF" name "$VLAN10_IF" type vlan id "$VLAN10_ID"
+ip link show "$VLAN20_IF" >/dev/null 2>&1 || run ip link add link "$PARENT_IF" name "$VLAN20_IF" type vlan id "$VLAN20_ID"
+
+for iface in "$VLAN10_IF" "$VLAN20_IF"; do
+       run ip link set "$iface" up
+       run ip link set "$iface" mtu "$MTU"
+done
+
+run ip addr replace "$VLAN10_IP" dev "$VLAN10_IF"
+run ip addr replace "$VLAN20_IP" dev "$VLAN20_IF"
+
+if [ "$SET_CONFIGFS_ROCE_MODE" -eq 1 ]; then
+       mount | grep -q ' /sys/kernel/config ' || mount -t configfs none /sys/kernel/config
+       mkdir -p "/sys/kernel/config/rdma_cm/$RDMA_DEV" || true
+       if [ -f "/sys/kernel/config/rdma_cm/$RDMA_DEV/ports/1/default_roce_mode" ]; then
+               echo "RoCE v2" >"/sys/kernel/config/rdma_cm/$RDMA_DEV/ports/1/default_roce_mode" || true
+       fi
+fi
+
+echo
+echo "=== Interface state ==="
+for iface in "$PARENT_IF" "$VLAN10_IF" "$VLAN20_IF"; do
+       ip -br addr show dev "$iface" || true
+done
+
+echo
+echo "=== Link state ==="
+ethtool "$PARENT_IF" | grep -E 'Link detected|Speed|Duplex' || true
+
+echo
+echo "=== RDMA device ==="
+echo "rdma_dev=${RDMA_DEV}"
+rdma link || true
+ibv_devices || true
+
+echo
+echo "=== Driver check ==="
+lspci -k | grep -A5 -i mellanox || true
+lsmod | grep -E 'mlx4|rxe|rdma' || true
+
+echo
+echo "=== GID table ==="
+show_gids
+
+echo
+echo "=== RoCEv2 VLAN GID hints ==="
+for iface in "$VLAN10_IF" "$VLAN20_IF"; do
+       echo "$iface:"
+       show_gids | grep 'RoCE v2' | grep "$iface" || true
+done
+
+echo
+echo "=== Example tests ==="
+echo "Server:"
+echo "ib_write_bw -d $RDMA_DEV -i 1 -R -x <SERVER_ROCEV2_GID_INDEX> -F --report_gbits"
+echo
+echo "Client:"
+echo "ib_write_bw -d $RDMA_DEV -i 1 -R -x <CLIENT_ROCEV2_GID_INDEX> -F --report_gbits <SERVER_IP>"

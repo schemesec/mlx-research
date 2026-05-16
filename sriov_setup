@@ -1,0 +1,273 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PF="${PF:-enp23s0}"
+NUM_VFS="${NUM_VFS:-8}"
+VF_VLAN="${VF_VLAN:-20}"
+FW_NUM_OF_VFS="${FW_NUM_OF_VFS:-32}"
+ENABLE_IOMMU_GRUB="${ENABLE_IOMMU_GRUB:-0}"
+ACS_OVERRIDE="${ACS_OVERRIDE:-0}"
+AUTO_REBOOT="${AUTO_REBOOT:-0}"
+INSTALL_PACKAGES="${INSTALL_PACKAGES:-0}"
+ROCE_MODE="${ROCE_MODE:-2}"
+UD_GID_TYPE="${UD_GID_TYPE:-1}"
+MLX4_CONF="${MLX4_CONF:-/etc/modprobe.d/mlx4.conf}"
+
+usage() {
+       cat <<EOF
+Usage: $0 [options]
+
+Configure CX3 Pro SR-IOV firmware checks, mlx4 boot params, and VF VLAN helper.
+
+Options:
+  --install-packages    Install pciutils/ethtool/iproute2 before setup.
+  --enable-iommu-grub   Update GRUB with IOMMU args.
+  --acs-override        Add pcie_acs_override when updating GRUB.
+  --auto-reboot         Reboot at the end. Off by default.
+  -h, --help            Show this help.
+
+Environment:
+  PF=...                PF netdev. Default: enp23s0.
+  NUM_VFS=...           Number of VFs for port 1. Default: 8.
+  VF_VLAN=...           VLAN assigned to each VF. Default: 20.
+  FW_NUM_OF_VFS=...     Firmware NUM_OF_VFS target. Default: 32.
+  ROCE_MODE=...         mlx4 roce_mode value. Default: 2.
+  UD_GID_TYPE=...       mlx4 ud_gid_type value. Default: 1.
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+       case "$1" in
+       --install-packages)
+               INSTALL_PACKAGES=1
+               ;;
+       --enable-iommu-grub)
+               ENABLE_IOMMU_GRUB=1
+               ;;
+       --acs-override)
+               ACS_OVERRIDE=1
+               ;;
+       --auto-reboot)
+               AUTO_REBOOT=1
+               ;;
+       -h|--help)
+               usage
+               exit 0
+               ;;
+       *)
+               echo "error: unknown option: $1" >&2
+               usage >&2
+               exit 2
+               ;;
+       esac
+       shift
+done
+
+run() {
+       echo "+ $*"
+       "$@"
+}
+
+need_root() {
+       if [ "$(id -u)" -ne 0 ]; then
+               echo "error: this script must run as root" >&2
+               exit 1
+       fi
+}
+
+need_cmd() {
+       if ! command -v "$1" >/dev/null 2>&1; then
+               echo "error: missing command: $1" >&2
+               exit 1
+       fi
+}
+
+need_root
+
+echo "=== CX3 Pro SR-IOV setup ==="
+echo "host=$(hostname)"
+echo "pf=${PF}"
+echo "num_vfs=${NUM_VFS}"
+echo "vf_vlan=${VF_VLAN}"
+echo "fw_num_of_vfs=${FW_NUM_OF_VFS}"
+echo "enable_iommu_grub=${ENABLE_IOMMU_GRUB}"
+echo "acs_override=${ACS_OVERRIDE}"
+echo
+
+if [ "$INSTALL_PACKAGES" -eq 1 ]; then
+       run apt update
+       run apt install -y pciutils ethtool iproute2
+fi
+
+need_cmd ip
+need_cmd lspci
+
+if ! modprobe --show-depends mlx4_core | grep -q '/updates/mlnx-ofed-cx3/'; then
+       echo "error: mlx4_core does not resolve to the mlx-research installed module directory" >&2
+       echo "run ./install-pve7.sh from this repo before configuring SR-IOV" >&2
+       exit 1
+fi
+
+echo
+echo "=== Loading VFIO modules ==="
+for module in vfio vfio_iommu_type1 vfio_pci; do
+       run modprobe "$module" || true
+done
+
+cat >/etc/modules-load.d/vfio.conf <<'MODS'
+vfio
+vfio_iommu_type1
+vfio_pci
+MODS
+
+echo
+echo "=== Optional GRUB IOMMU config ==="
+if [ "$ENABLE_IOMMU_GRUB" = "1" ]; then
+       if grep -q GenuineIntel /proc/cpuinfo; then
+               IOMMU_ARGS="quiet intel_iommu=on iommu=pt pci=assign-busses"
+       elif grep -q AuthenticAMD /proc/cpuinfo; then
+               IOMMU_ARGS="quiet amd_iommu=on iommu=pt pci=assign-busses"
+       else
+               IOMMU_ARGS="quiet iommu=pt pci=assign-busses"
+       fi
+
+       if [ "$ACS_OVERRIDE" = "1" ]; then
+               IOMMU_ARGS="$IOMMU_ARGS pcie_acs_override=downstream,multifunction"
+       fi
+
+       cp /etc/default/grub "/etc/default/grub.bak.$(date +%Y%m%d-%H%M%S)"
+       sed -i -E "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"$IOMMU_ARGS\"|" /etc/default/grub
+       run update-grub
+       if command -v proxmox-boot-tool >/dev/null 2>&1; then
+               proxmox-boot-tool refresh || true
+       fi
+       echo "GRUB updated. Reboot required for IOMMU boot changes."
+else
+       echo "Skipping GRUB edit. Use --enable-iommu-grub if this host still needs IOMMU boot options."
+fi
+
+echo
+echo "=== Checking Mellanox firmware SR-IOV config ==="
+need_cmd mst
+need_cmd mlxconfig
+run mst start
+mst status -v
+
+MST_DEV="$(mst status -v | awk '$2 ~ /^\/dev\/mst\/mt.*pciconf/ {print $2; exit}')"
+[ -n "$MST_DEV" ] || MST_DEV="$(mst status -v | awk '$2 ~ /^\/dev\/mst\/mt.*pci_cr/ {print $2; exit}')"
+
+if [ -z "$MST_DEV" ]; then
+       echo "error: could not find MST device" >&2
+       mst status -v || true
+       exit 1
+fi
+
+echo "mst_dev=${MST_DEV}"
+MLXCFG="$(mlxconfig -d "$MST_DEV" q || true)"
+echo "$MLXCFG" | grep -E 'SRIOV_EN|NUM_OF_VFS' || true
+
+SRIOV_STATE="$(echo "$MLXCFG" | awk '/SRIOV_EN/ {print $2; exit}')"
+CURRENT_FW_VFS="$(echo "$MLXCFG" | awk '/NUM_OF_VFS/ {print $2; exit}')"
+CURRENT_FW_VFS="${CURRENT_FW_VFS:-0}"
+NEED_FW_CHANGE=0
+
+if ! echo "$SRIOV_STATE" | grep -q 'True'; then
+       NEED_FW_CHANGE=1
+fi
+if [ "$CURRENT_FW_VFS" -lt "$NUM_VFS" ] 2>/dev/null; then
+       NEED_FW_CHANGE=1
+fi
+if [ "$FW_NUM_OF_VFS" -lt "$NUM_VFS" ] 2>/dev/null; then
+       FW_NUM_OF_VFS="$NUM_VFS"
+fi
+
+if [ "$NEED_FW_CHANGE" = "1" ]; then
+       echo "Setting firmware SR-IOV: SRIOV_EN=1 NUM_OF_VFS=${FW_NUM_OF_VFS}"
+       run mlxconfig -d "$MST_DEV" -y set SRIOV_EN=1 NUM_OF_VFS="$FW_NUM_OF_VFS"
+       echo "Firmware config changed. Reboot required."
+else
+       echo "Firmware SR-IOV is already enabled."
+fi
+
+echo
+echo "=== Writing mlx4 module options ==="
+cp -a "$MLX4_CONF" "${MLX4_CONF}.bak.$(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
+cat >"$MLX4_CONF" <<EOF2
+options mlx4_core num_vfs=${NUM_VFS},0,0 probe_vf=${NUM_VFS},0,0 port_type_array=2,2 roce_mode=${ROCE_MODE} ud_gid_type=${UD_GID_TYPE} enable_sys_tune=1 log_num_mgm_entry_size=-7
+EOF2
+cat "$MLX4_CONF"
+
+echo
+echo "=== Creating VF VLAN helper ==="
+cat >/usr/local/sbin/cx3pro-apply-vf-vlans.sh <<'VFHELPER'
+#!/usr/bin/env bash
+set -euo pipefail
+
+PF="${PF:-enp23s0}"
+NUM_VFS="${NUM_VFS:-8}"
+VF_VLAN="${VF_VLAN:-20}"
+
+echo "Applying VF VLANs"
+echo "PF=$PF"
+echo "NUM_VFS=$NUM_VFS"
+echo "VF_VLAN=$VF_VLAN"
+
+ip link set "$PF" up
+
+for i in $(seq 0 $((NUM_VFS - 1))); do
+       ip link set "$PF" vf "$i" vlan "$VF_VLAN"
+       ip link set "$PF" vf "$i" spoofchk on || true
+done
+
+ip link show dev "$PF"
+lspci -D | grep -i mellanox || true
+VFHELPER
+
+chmod +x /usr/local/sbin/cx3pro-apply-vf-vlans.sh
+
+echo
+echo "=== Creating systemd VF VLAN service ==="
+cat >/etc/systemd/system/cx3pro-sriov-vfs.service <<EOF3
+[Unit]
+Description=Configure CX3 Pro SR-IOV VF VLANs
+Before=network-online.target network-pre.target
+Wants=network-pre.target
+After=systemd-modules-load.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=PF=${PF}
+Environment=NUM_VFS=${NUM_VFS}
+Environment=VF_VLAN=${VF_VLAN}
+ExecStart=/usr/local/sbin/cx3pro-apply-vf-vlans.sh
+
+[Install]
+WantedBy=multi-user.target
+EOF3
+
+run systemctl daemon-reload
+run systemctl enable cx3pro-sriov-vfs.service
+run update-initramfs -u
+
+echo
+echo "=== Current checks before reboot ==="
+cat /proc/cmdline
+echo
+cat /sys/module/mlx4_core/parameters/num_vfs 2>/dev/null || true
+cat /sys/module/mlx4_core/parameters/probe_vf 2>/dev/null || true
+cat /sys/module/mlx4_core/parameters/port_type_array 2>/dev/null || true
+ip link show dev "$PF" || true
+lspci -D | grep -i mellanox || true
+
+echo
+echo "Reboot is required before mlx4_core boot parameters create VFs."
+echo "After reboot:"
+echo "  systemctl status cx3pro-sriov-vfs.service --no-pager"
+echo "  ip link show dev $PF"
+echo "  lspci -D | grep -i mellanox"
+
+if [ "$AUTO_REBOOT" = "1" ]; then
+       echo "AUTO_REBOOT=1 set, rebooting now."
+       reboot
+fi
