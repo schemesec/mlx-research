@@ -9,6 +9,7 @@
 #include <linux/sunrpc/svc.h>
 #include <linux/sunrpc/svc_xprt.h>
 #include <linux/sunrpc/svc_rdma.h>
+#include <linux/version.h>
 
 #include "xprt_rdma.h"
 #ifdef HAVE_TRACE_RPCRDMA_H
@@ -404,11 +405,16 @@ void rpcrdma_bc_receive_call(struct rpcrdma_xprt *r_xprt,
 	/* Queue rqst for ULP's callback service */
 	bc_serv = xprt->bc_serv;
 	xprt_get(xprt);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
+	if (lwq_enqueue(&rqst->rq_bc_list, &bc_serv->sv_cb_list))
+		svc_wake_up(bc_serv);
+#else
 	spin_lock(&bc_serv->sv_cb_lock);
 	list_add(&rqst->rq_bc_list, &bc_serv->sv_cb_list);
 	spin_unlock(&bc_serv->sv_cb_lock);
 
 	wake_up(&bc_serv->sv_cb_waitq);
+#endif
 
 	r_xprt->rx_stats.bcall_count++;
 	return;

@@ -611,7 +611,9 @@ iser_set_dif_domain(struct scsi_cmnd *sc, struct ib_sig_attrs *sig_attrs,
 	domain->sig_type = IB_SIG_TYPE_T10_DIF;
 #ifdef HAVE_SCSI_CMND_PROT_FLAGS
 	domain->sig.dif.pi_interval = scsi_prot_interval(sc);
-#ifdef HAVE_T10_PI_REF_TAG
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
+	domain->sig.dif.ref_tag = scsi_prot_ref_tag(sc);
+#elif defined(HAVE_T10_PI_REF_TAG)
 	domain->sig.dif.ref_tag = t10_pi_ref_tag(sc->request);
 #else
 	domain->sig.dif.ref_tag = scsi_prot_ref_tag(sc);

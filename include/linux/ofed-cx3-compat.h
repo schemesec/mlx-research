@@ -2,12 +2,25 @@
 #define _OFED_CX3_COMPAT_H
 
 #include <linux/string.h>
+#include <linux/version.h>
 #include <linux/random.h>
 #include <linux/mmzone.h>
 #include <linux/dma-mapping.h>
 #include <linux/file.h>
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6,12,0)
 #include <linux/skbuff_ref.h>
+#endif
+
+/*
+ * Linux 7.x svc_rdma_recv_ctxt has the modern single-buffer Receive
+ * layout used by the PCL code path. The MLNX_OFED feature probe misses
+ * that on Proxmox 7.0.2 headers, which otherwise leaves xprtrdma trying
+ * to compile legacy rc_pages/rc_sges receive handling against the modern
+ * structure.
+ */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0) && \
+	defined(HAVE_SVC_RDMA_PCL) && !defined(HAVE_SVC_FILL_WRITE_VECTOR)
+#define HAVE_SVC_FILL_WRITE_VECTOR 1
 #endif
 
 /*

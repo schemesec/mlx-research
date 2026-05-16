@@ -1403,7 +1403,9 @@ int svc_rdma_recvfrom(struct svc_rqst *rqstp)
 		goto out_err;
 	if (ret == 0)
 		goto out_drop;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(7, 0, 0)
 	rqstp->rq_xprt_hlen = ret;
+#endif
 
 #ifdef HAVE_SVC_RDMA_PCL
 	if (svc_rdma_is_reverse_direction_reply(xprt, ctxt))
