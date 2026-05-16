@@ -95,6 +95,22 @@ show_gids() {
 }
 
 find_rdma_dev() {
+       local preferred_if="$1"
+
+       for dev in /sys/class/infiniband/*; do
+               [ -d "$dev" ] || continue
+               name="$(basename "$dev")"
+               echo "$name" | grep -Eq '^(rxe|siw)' && continue
+
+               for ndev in "$dev"/ports/*/gid_attrs/ndevs/*; do
+                       [ -f "$ndev" ] || continue
+                       if [ "$(cat "$ndev" 2>/dev/null || true)" = "$preferred_if" ]; then
+                               echo "$name"
+                               return 0
+                       fi
+               done
+       done
+
        for dev in /sys/class/infiniband/*; do
                [ -d "$dev" ] || continue
                name="$(basename "$dev")"
@@ -141,7 +157,7 @@ if lsmod | grep -q '^rdma_rxe'; then
        exit 1
 fi
 
-RDMA_DEV="$(find_rdma_dev || true)"
+RDMA_DEV="$(find_rdma_dev "$PARENT_IF" || true)"
 if [ -z "$RDMA_DEV" ]; then
        echo "error: no hardware RDMA device found under /sys/class/infiniband" >&2
        ls /sys/class/infiniband || true

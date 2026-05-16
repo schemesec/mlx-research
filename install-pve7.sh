@@ -98,6 +98,31 @@ install_module() {
 	run install -m 0644 "$src" "$dst"
 }
 
+ensure_initramfs_modules() {
+	local modules_file="/etc/initramfs-tools/modules"
+	local begin="# mlx-research begin"
+	local end="# mlx-research end"
+
+	if [ ! -f "$modules_file" ]; then
+		run touch "$modules_file"
+	fi
+
+	if grep -q "^${begin}$" "$modules_file"; then
+		run sed -i "/^${begin}$/,/^${end}$/d" "$modules_file"
+	fi
+
+	{
+		printf '%s\n' "$begin"
+		printf '%s\n' mlx_compat
+		printf '%s\n' ib_core
+		printf '%s\n' mlx4_core
+		printf '%s\n' mlx4_en
+		printf '%s\n' mlx4_ib
+		printf '%s\n' "$end"
+	} >>"$modules_file"
+	log "initramfs modules pinned in ${modules_file}"
+}
+
 mkdir -p "$LOG_DIR"
 cd "$REPO_ROOT"
 
@@ -244,6 +269,11 @@ log
 
 log "=== update module dependency database ==="
 run depmod "$KVER"
+log
+
+log "=== update initramfs module list ==="
+ensure_initramfs_modules
+run update-initramfs -u -k "$KVER"
 log
 
 log "=== dependency check ==="
