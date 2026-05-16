@@ -6,6 +6,7 @@ KVER="${KVER:-$(uname -r)}"
 JOBS="${JOBS:-$(nproc)}"
 INSTALL_DIR="${INSTALL_DIR:-/lib/modules/${KVER}/updates/mlnx-ofed-cx3}"
 MLNX_PYTHON="${MLNX_PYTHON:-}"
+MODULE_KCFLAGS="-mindirect-branch=keep -mfunction-return=keep"
 BUILD_ONLY=0
 NO_BUILD=0
 FORCE_KERNEL=0
@@ -150,7 +151,7 @@ if [ "$NO_BUILD" -eq 0 ]; then
 
 	log "=== build base mlx4/RDMA modules ==="
 	run make "CWD=${REPO_ROOT}" "MLNX_PYTHON=${MLNX_PYTHON}" \
-		MLNX_CFLAGS= KCFLAGS=-mfunction-return=keep \
+		MLNX_CFLAGS= "KCFLAGS=${MODULE_KCFLAGS}" \
 		CFLAGS_RETPOLINE= CONFIG_RETPOLINE=y \
 		CONFIG_INFINIBAND_USER_MAD=m \
 		"-j${JOBS}"
@@ -162,7 +163,7 @@ if [ "$NO_BUILD" -eq 0 ]; then
 		"OFA_DIR=${REPO_ROOT}" \
 		"SRC_DIR=${REPO_ROOT}" \
 		"KVER=${KVER}" \
-		KCFLAGS=-mfunction-return=keep \
+		"KCFLAGS=${MODULE_KCFLAGS}" \
 		-C net/sunrpc/xprtrdma
 	log
 
@@ -172,7 +173,7 @@ if [ "$NO_BUILD" -eq 0 ]; then
 		"OFA_DIR=${REPO_ROOT}" \
 		"SRC_DIR=${REPO_ROOT}" \
 		"KVER=${KVER}" \
-		KCFLAGS=-mfunction-return=keep \
+		"KCFLAGS=${MODULE_KCFLAGS}" \
 		-C drivers/infiniband/ulp/iser
 	log
 else
@@ -233,6 +234,6 @@ log
 
 log "install complete"
 log "reboot into ${KVER}, then verify with:"
-log "  journalctl -k -b -g 'BUG|Oops|WARNING|Call Trace|mlx4|rpcrdma|svc_rdma|sysctl table check failed' --no-pager"
+log "  journalctl -k -b -g 'BUG|Oops|WARNING|Call Trace|mlx4|rpcrdma|svc_rdma|sysctl table check failed|__warn_thunk' --no-pager"
 log "  systemctl is-active pveproxy pvedaemon pvestatd pve-cluster pve-firewall"
 log "log=${LOG}"
