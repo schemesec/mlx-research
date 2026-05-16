@@ -3300,14 +3300,16 @@ static int build_mlx_header(struct mlx4_ib_sqp *sqp, const struct ib_ud_wr *wr,
 
 		mlx->sched_prio = cpu_to_be16(pcp);
 
-		ether_addr_copy(sqp->ud_header.eth.smac_h, ah->av.eth.s_mac);
-		memcpy(sqp->ud_header.eth.dmac_h, ah->av.eth.mac, 6);
+		memcpy(sqp->ud_header.eth.smac_h, ah->av.eth.s_mac, 2);
+		memcpy(sqp->ud_header.eth.smac_l, ah->av.eth.s_mac + 2, 4);
+		memcpy(sqp->ud_header.eth.dmac_h, ah->av.eth.mac, 4);
+		memcpy(sqp->ud_header.eth.dmac_l, ah->av.eth.mac + 4, 2);
 		memcpy(&ctrl->srcrb_flags16[0], ah->av.eth.mac, 2);
 		memcpy(&ctrl->imm, ah->av.eth.mac + 2, 4);
 		memcpy(&in6, sgid.raw, sizeof(in6));
 
 
-		if (!memcmp(sqp->ud_header.eth.smac_h, sqp->ud_header.eth.dmac_h, 6))
+		if (ether_addr_equal(ah->av.eth.s_mac, ah->av.eth.mac))
 			mlx->flags |= cpu_to_be32(MLX4_WQE_CTRL_FORCE_LOOPBACK);
 		if (!is_vlan) {
 			sqp->ud_header.eth.type = cpu_to_be16(ether_type);

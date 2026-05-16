@@ -123,6 +123,21 @@ ensure_initramfs_modules() {
 	log "initramfs modules pinned in ${modules_file}"
 }
 
+ensure_module_blacklist() {
+	local blacklist_file="/etc/modprobe.d/mlx-research-cx3.conf"
+
+	cat >"$blacklist_file" <<'EOF'
+# mlx-research CX3 OFED port
+#
+# This tree installs a ported ib_core/mlx4 stack, but does not install a
+# matching ib_ipoib module. Prevent the stock kernel ib_ipoib from loading
+# against the ported ib_core and producing symbol-version failures at boot.
+blacklist ib_ipoib
+install ib_ipoib /bin/false
+EOF
+	log "module blacklist written to ${blacklist_file}"
+}
+
 mkdir -p "$LOG_DIR"
 cd "$REPO_ROOT"
 
@@ -273,6 +288,7 @@ log
 
 log "=== update initramfs module list ==="
 ensure_initramfs_modules
+ensure_module_blacklist
 run update-initramfs -u -k "$KVER"
 log
 
