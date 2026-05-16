@@ -7,9 +7,11 @@ JOBS="${JOBS:-$(nproc)}"
 INSTALL_DIR="${INSTALL_DIR:-/lib/modules/${KVER}/updates/mlnx-ofed-cx3}"
 MLNX_PYTHON="${MLNX_PYTHON:-}"
 MODULE_KCFLAGS="-mindirect-branch=keep -mfunction-return=keep"
+BACKUP_DIR="${BACKUP_DIR:-}"
 BUILD_ONLY=0
 NO_BUILD=0
 FORCE_KERNEL=0
+NO_BACKUP=0
 
 usage() {
 	cat <<EOF
@@ -20,6 +22,7 @@ Build and install the ported MLNX_OFED CX3/mlx4 modules for Proxmox VE 7.
 Options:
   --build-only       Build modules but do not install into /lib/modules.
   --no-build         Install previously built modules from this tree.
+  --no-backup        Do not back up the current installed module directory.
   --force-kernel     Allow kernels other than ${SUPPORTED_KERNEL}.
   -h, --help         Show this help.
 
@@ -30,6 +33,8 @@ Environment:
                      Default: python if present, otherwise python3.
   INSTALL_DIR=...    Module install directory. Default:
                      /lib/modules/\$KVER/updates/mlnx-ofed-cx3
+  BACKUP_DIR=...     Backup directory for the previous installed modules.
+                     Default: /lib/modules/\$KVER/updates/mlnx-ofed-cx3.backup-<timestamp>
 EOF
 }
 
@@ -40,6 +45,9 @@ while [ "$#" -gt 0 ]; do
 		;;
 	--no-build)
 		NO_BUILD=1
+		;;
+	--no-backup)
+		NO_BACKUP=1
 		;;
 	--force-kernel)
 		FORCE_KERNEL=1
@@ -207,6 +215,17 @@ if [ "$BUILD_ONLY" -eq 1 ]; then
 	exit 0
 fi
 
+if [ -z "$BACKUP_DIR" ]; then
+	BACKUP_DIR="${INSTALL_DIR}.backup-${TS}"
+fi
+
+if [ "$NO_BACKUP" -eq 0 ] && [ -d "$INSTALL_DIR" ]; then
+	log "=== backup current installed modules ==="
+	run cp -a "$INSTALL_DIR" "$BACKUP_DIR"
+	log "backup_dir=${BACKUP_DIR}"
+	log
+fi
+
 log "=== install modules ==="
 run mkdir -p "$INSTALL_DIR"
 for module in "${MODULES[@]}"; do
@@ -233,6 +252,10 @@ run modprobe --show-depends -S "$KVER" ib_iser
 log
 
 log "install complete"
+if [ "$NO_BACKUP" -eq 0 ] && [ -d "$BACKUP_DIR" ]; then
+	log "rollback command:"
+	log "  ./rollback-pve7.sh ${BACKUP_DIR}"
+fi
 log "reboot into ${KVER}, then verify with:"
 log "  journalctl -k -b -g 'BUG|Oops|WARNING|Call Trace|mlx4|rpcrdma|svc_rdma|sysctl table check failed|__warn_thunk' --no-pager"
 log "  systemctl is-active pveproxy pvedaemon pvestatd pve-cluster pve-firewall"
