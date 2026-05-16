@@ -12,8 +12,8 @@ apt update
 apt install -y git build-essential pve-headers-$(uname -r)
 git clone https://github.com/schemesec/mlx-research.git
 cd mlx-research
-sudo ./install-pve7.sh
-sudo reboot
+./install-pve7.sh
+reboot
 ```
 
 After reboot, verify the OFED modules are being used:
