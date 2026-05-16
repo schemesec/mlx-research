@@ -5,6 +5,7 @@ SUPPORTED_KERNEL="7.0.2-2-pve"
 KVER="${KVER:-$(uname -r)}"
 JOBS="${JOBS:-$(nproc)}"
 INSTALL_DIR="${INSTALL_DIR:-/lib/modules/${KVER}/updates/mlnx-ofed-cx3}"
+MLNX_PYTHON="${MLNX_PYTHON:-}"
 BUILD_ONLY=0
 NO_BUILD=0
 FORCE_KERNEL=0
@@ -24,6 +25,8 @@ Options:
 Environment:
   KVER=...           Kernel release to build/install for. Default: uname -r.
   JOBS=...           Parallel build jobs. Default: nproc.
+  MLNX_PYTHON=...    Python executable for legacy OFED scripts.
+                     Default: python if present, otherwise python3.
   INSTALL_DIR=...    Module install directory. Default:
                      /lib/modules/\$KVER/updates/mlnx-ofed-cx3
 EOF
@@ -109,6 +112,25 @@ if [ ! -d "/lib/modules/${KVER}/build" ]; then
 	exit 1
 fi
 
+if [ -z "$MLNX_PYTHON" ]; then
+	if command -v python >/dev/null 2>&1; then
+		MLNX_PYTHON=python
+	elif command -v python3 >/dev/null 2>&1; then
+		MLNX_PYTHON=python3
+	else
+		log "error: neither python nor python3 is available"
+		exit 1
+	fi
+fi
+log "mlnx_python=${MLNX_PYTHON}"
+log
+
+if [ ! -f compat/config.h ]; then
+	log "error: missing generated compat/config.h"
+	log "run git pull to fetch tracked OFED build metadata before installing"
+	exit 1
+fi
+
 if [ "$BUILD_ONLY" -ne 1 ] && [ "$(id -u)" -ne 0 ]; then
 	log "error: installing modules requires root"
 	exit 1
@@ -116,7 +138,7 @@ fi
 
 if [ "$NO_BUILD" -eq 0 ]; then
 	log "=== build base mlx4/RDMA modules ==="
-	run make "CWD=${REPO_ROOT}" CFLAGS_RETPOLINE= CONFIG_RETPOLINE=y "-j${JOBS}"
+	run make "CWD=${REPO_ROOT}" "MLNX_PYTHON=${MLNX_PYTHON}" CFLAGS_RETPOLINE= CONFIG_RETPOLINE=y "-j${JOBS}"
 	log
 
 	log "=== build NFS/RDMA module ==="
