@@ -34,7 +34,7 @@ Environment:
   INSTALL_DIR=...    Module install directory. Default:
                      /lib/modules/\$KVER/updates/mlnx-ofed-cx3
   BACKUP_DIR=...     Backup directory for the previous installed modules.
-                     Default: /lib/modules/\$KVER/updates/mlnx-ofed-cx3.backup-<timestamp>
+                     Default: ./module-backups/\$KVER/mlnx-ofed-cx3.backup-<timestamp>
 EOF
 }
 
@@ -216,11 +216,12 @@ if [ "$BUILD_ONLY" -eq 1 ]; then
 fi
 
 if [ -z "$BACKUP_DIR" ]; then
-	BACKUP_DIR="${INSTALL_DIR}.backup-${TS}"
+	BACKUP_DIR="${REPO_ROOT}/module-backups/${KVER}/mlx-ofed-cx3.backup-${TS}"
 fi
 
 if [ "$NO_BACKUP" -eq 0 ] && [ -d "$INSTALL_DIR" ]; then
 	log "=== backup current installed modules ==="
+	run mkdir -p "$(dirname "$BACKUP_DIR")"
 	run cp -a "$INSTALL_DIR" "$BACKUP_DIR"
 	log "backup_dir=${BACKUP_DIR}"
 	log
