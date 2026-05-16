@@ -599,7 +599,7 @@ static int ib_uverbs_open_xrcd(struct uverbs_attr_bundle *attrs)
 	struct ib_uxrcd_object         *obj;
 	struct ib_xrcd                 *xrcd = NULL;
 #ifdef HAVE_FDGET
-	struct fd			f = {NULL, 0};
+	struct fd			f = {};
 #else
 	struct file                    *f = NULL;
 #endif
@@ -618,12 +618,12 @@ static int ib_uverbs_open_xrcd(struct uverbs_attr_bundle *attrs)
 #ifdef HAVE_FDGET
 		/* search for file descriptor */
 		f = fdget(cmd.fd);
-		if (!f.file) {
+		if (!fd_file(f)) {
 			ret = -EBADF;
 			goto err_tree_mutex_unlock;
 		}
 
-		inode = file_inode(f.file);
+		inode = file_inode(fd_file(f));
 #else
 		f = fget(cmd.fd);
 		if (!f) {
@@ -692,7 +692,7 @@ static int ib_uverbs_open_xrcd(struct uverbs_attr_bundle *attrs)
 		goto err_copy;
 
 #ifdef HAVE_FDGET
-	if (f.file)
+	if (fd_file(f))
 		fdput(f);
 #else
 	if (f)
@@ -719,7 +719,7 @@ err:
 
 err_tree_mutex_unlock:
 #ifdef HAVE_FDGET
-	if (f.file)
+	if (fd_file(f))
 		fdput(f);
 #else
 	if (f)

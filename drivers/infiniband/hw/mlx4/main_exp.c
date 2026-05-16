@@ -4,6 +4,7 @@
 #include <linux/errno.h>
 #include <linux/netdevice.h>
 #include <linux/inetdevice.h>
+#include <linux/sched/mm.h>
 #include <linux/mlx4/qp.h>
 #include <linux/mlx4/cmd.h>
 
@@ -156,15 +157,25 @@ unsigned long mlx4_ib_exp_get_unmapped_area(struct file *file,
 	unsigned long  command;
 
 	mm = current->mm;
-	if (addr)
+	if (addr) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,12,0)
+		return mm_get_unmapped_area(file, addr, len, pgoff, flags);
+#else
 		return current->mm->get_unmapped_area(file, addr, len,
 						pgoff, flags);
+#endif
+	}
 
 	/* Last 8 bits hold the  command others are data per that command */
 	command = pgoff & MLX4_IB_EXP_MMAP_CMD_MASK;
-	if (command != MLX4_IB_EXP_MMAP_GET_CONTIGUOUS_PAGES)
+	if (command != MLX4_IB_EXP_MMAP_GET_CONTIGUOUS_PAGES) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,12,0)
+		return mm_get_unmapped_area(file, addr, len, pgoff, flags);
+#else
 		return current->mm->get_unmapped_area(file, addr, len,
 						pgoff, flags);
+#endif
+	}
 	page_size_order = pgoff >> MLX4_IB_EXP_MMAP_CMD_BITS;
 	/* code is based on the huge-pages get_unmapped_area code */
 	start_addr = mm->free_area_cache;

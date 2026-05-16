@@ -2,6 +2,10 @@
 #define _COMPAT_LINUX_T10_PI_H 1
 
 #include "../../compat/config.h"
+#include <linux/version.h>
+#ifdef CONFIG_BLK_DEV_INTEGRITY
+#include <linux/bio-integrity.h>
+#endif
 
 #ifdef HAVE_T10_PI_H
 
@@ -89,7 +93,7 @@ static inline void t10_pi_prepare(struct request *rq, u8 protection_type)
 		return;
 
 	__rq_for_each_bio(bio, rq) {
-#ifdef HAVE_BIO_BIP_GET_SEED
+#if defined(HAVE_BIO_BIP_GET_SEED) || LINUX_VERSION_CODE >= KERNEL_VERSION(4,13,0)
 		struct bio_integrity_payload *bip = bio_integrity(bio);
 		u32 virt = bip_get_seed(bip) & 0xffffffff;
 		struct bio_vec iv;
@@ -165,7 +169,7 @@ static inline void t10_pi_complete(struct request *rq, u8 protection_type,
 		return;
 
 	__rq_for_each_bio(bio, rq) {
-#ifdef HAVE_BIO_BIP_GET_SEED
+#if defined(HAVE_BIO_BIP_GET_SEED) || LINUX_VERSION_CODE >= KERNEL_VERSION(4,13,0)
 		struct bio_integrity_payload *bip = bio_integrity(bio);
 		u32 virt = bip_get_seed(bip) & 0xffffffff;
 		struct bio_vec iv;

@@ -486,7 +486,7 @@ int mlx4_QUERY_FUNC_CAP_wrapper(struct mlx4_dev *dev, int slave,
 			 QUERY_FUNC_CAP_FLAG_RESD_LKEY);
 		MLX4_PUT(outbox->buf, field, QUERY_FUNC_CAP_FLAGS_OFFSET);
 
-		field = min(
+		field = min_t(int,
 			bitmap_weight(actv_ports.ports, dev->caps.num_ports),
 			dev->caps.num_ports);
 		MLX4_PUT(outbox->buf, field, QUERY_FUNC_CAP_NUM_PORTS_OFFSET);

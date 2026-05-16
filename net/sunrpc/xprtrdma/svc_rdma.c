@@ -44,6 +44,7 @@
 #include <linux/slab.h>
 #include <linux/fs.h>
 #include <linux/sysctl.h>
+#include <linux/version.h>
 #include <linux/workqueue.h>
 #include <linux/sunrpc/clnt.h>
 #include <linux/sunrpc/sched.h>
@@ -74,7 +75,13 @@ enum {
 	SVCRDMA_COUNTER_BUFSIZ	= sizeof(unsigned long long),
 };
 
-static int svcrdma_counter_handler(struct ctl_table *table, int write,
+static int svcrdma_counter_handler(
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
+				   const struct ctl_table *table,
+#else
+				   struct ctl_table *table,
+#endif
+				   int write,
 #ifdef HAVE_CGROUP_BPF_RUN_FILTER_SYSCTL_7_PARAMETERS
 				   void *buffer, size_t *lenp, loff_t *ppos)
 #else
@@ -221,6 +228,7 @@ static struct ctl_table svcrdma_parm_table[] = {
 	{ },
 };
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 8, 0)
 static struct ctl_table svcrdma_table[] = {
 	{
 		.procname	= "svc_rdma",
@@ -238,6 +246,7 @@ static struct ctl_table svcrdma_root_table[] = {
 	},
 	{ },
 };
+#endif
 
 static void svc_rdma_proc_cleanup(void)
 {
@@ -272,7 +281,12 @@ static int svc_rdma_proc_init(void)
 	if (rc)
 		goto out_err;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
+	svcrdma_table_header = register_sysctl("sunrpc/svc_rdma",
+					       svcrdma_parm_table);
+#else
 	svcrdma_table_header = register_sysctl_table(svcrdma_root_table);
+#endif
 	return 0;
 
 out_err:

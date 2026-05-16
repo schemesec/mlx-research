@@ -38,7 +38,13 @@
 
 /* mlx4_en_read_clock - read raw cycle counter (to be used by time counter)
  */
-static u64 mlx4_en_read_clock(const struct cyclecounter *tc)
+static u64 mlx4_en_read_clock(
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,13,0)
+	struct cyclecounter *tc
+#else
+	const struct cyclecounter *tc
+#endif
+)
 {
 	struct mlx4_en_dev *mdev =
 		container_of(tc, struct mlx4_en_dev, cycles);
@@ -146,6 +152,13 @@ static int mlx4_en_phc_adjfreq(struct ptp_clock_info *ptp, s32 delta)
 
 	return 0;
 }
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,9,0)
+static int mlx4_en_phc_adjfine(struct ptp_clock_info *ptp, long scaled_ppm)
+{
+	return mlx4_en_phc_adjfreq(ptp, scaled_ppm_to_ppb(scaled_ppm));
+}
+#endif
 
 /**
  * mlx4_en_phc_adjtime - Shift the time of the hardware clock
@@ -259,7 +272,11 @@ static const struct ptp_clock_info mlx4_en_ptp_clock_info = {
 #endif
 
 	.pps		= 0,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,9,0)
+	.adjfine	= mlx4_en_phc_adjfine,
+#else
 	.adjfreq	= mlx4_en_phc_adjfreq,
+#endif
 	.adjtime	= mlx4_en_phc_adjtime,
 #ifdef HAVE_PTP_CLOCK_INFO_GETTIME_32BIT
 	.gettime	= mlx4_en_phc_gettime,

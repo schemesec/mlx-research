@@ -72,10 +72,10 @@ MODULE_PARM_DESC(udev_dev_port_dev_id, "Work with dev_id or dev_port when"
 		 "\t\t2: Work with both of dev_id and dev_port (if dev_port is supported by the kernel).");
 
 static int mlx4_en_uc_steer_add(struct mlx4_en_priv *priv,
-				unsigned char *mac, int *qpn,
+				const unsigned char *mac, int *qpn,
 				u64 *reg_id, u16 vlan);
 static void mlx4_en_uc_steer_release(struct mlx4_en_priv *priv,
-				     unsigned char *mac, int qpn, u64 reg_id);
+				     const unsigned char *mac, int qpn, u64 reg_id);
 
 int mlx4_en_setup_tc(struct net_device *dev, u8 up)
 {
@@ -901,7 +901,7 @@ static void mlx4_en_u64_to_mac(unsigned char dst_mac[ETH_ALEN + 2], u64 src_mac)
 	memset(&dst_mac[ETH_ALEN], 0, 2);
 }
 
-static int mlx4_en_tunnel_steer_add(struct mlx4_en_priv *priv, unsigned char *addr,
+static int mlx4_en_tunnel_steer_add(struct mlx4_en_priv *priv, const unsigned char *addr,
 				    int qpn, u64 *reg_id)
 {
 	int err;
@@ -921,7 +921,7 @@ static int mlx4_en_tunnel_steer_add(struct mlx4_en_priv *priv, unsigned char *ad
 }
 
 static int mlx4_en_uc_steer_add(struct mlx4_en_priv *priv,
-				unsigned char *mac, int *qpn,
+				const unsigned char *mac, int *qpn,
 				u64 *reg_id, u16 vlan)
 {
 	struct mlx4_en_dev *mdev = priv->mdev;
@@ -983,7 +983,7 @@ static int mlx4_en_uc_steer_add(struct mlx4_en_priv *priv,
 }
 
 static void mlx4_en_uc_steer_release(struct mlx4_en_priv *priv,
-				     unsigned char *mac, int qpn, u64 reg_id)
+				     const unsigned char *mac, int qpn, u64 reg_id)
 {
 	struct mlx4_en_dev *mdev = priv->mdev;
 	struct mlx4_dev *dev = mdev->dev;
@@ -1174,7 +1174,7 @@ static int mlx4_en_set_mac(struct net_device *dev, void *addr)
 	if (err)
 		goto out;
 
-	memcpy(dev->dev_addr, saddr->sa_data, ETH_ALEN);
+	eth_hw_addr_set(dev, saddr->sa_data);
 	mlx4_en_update_user_mac(priv, new_mac);
 out:
 	mutex_unlock(&mdev->state_lock);
@@ -2617,6 +2617,17 @@ static struct attribute *vfstat_attrs[] = {
 	NULL
 };
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,13,0)
+static const struct attribute_group vfstat_attr_group = {
+	.attrs = vfstat_attrs,
+};
+
+static const struct attribute_group *vfstat_attr_groups[] = {
+	&vfstat_attr_group,
+	NULL,
+};
+#endif
+
 static ssize_t en_stats_show(struct kobject *kobj, struct attribute *attr,
 			     char *buf)
 {
@@ -2640,7 +2651,11 @@ static struct sysfs_ops en_port_stats_sysfs_ops = {
 
 static struct kobj_type en_port_stats = {
 	.sysfs_ops  = &en_port_stats_sysfs_ops,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,13,0)
+	.default_groups = vfstat_attr_groups,
+#else
 	.default_attrs = vfstat_attrs,
+#endif
 };
 
 static ssize_t mlx4_en_show_vf_link_state(struct en_port *en_p,
@@ -2884,9 +2899,24 @@ static struct attribute *vf_attrs[] = {
 	NULL
 };
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,13,0)
+static const struct attribute_group vf_attr_group = {
+	.attrs = vf_attrs,
+};
+
+static const struct attribute_group *vf_attr_groups[] = {
+	&vf_attr_group,
+	NULL,
+};
+#endif
+
 static struct kobj_type en_port_type = {
 	.sysfs_ops  = &en_port_vf_ops,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,13,0)
+	.default_groups = vf_attr_groups,
+#else
 	.default_attrs = vf_attrs,
+#endif
 };
 
 #ifdef CONFIG_SYSFS_FDB
@@ -4817,7 +4847,12 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 
 	/* Set default MAC */
 	dev->addr_len = ETH_ALEN;
-	mlx4_en_u64_to_mac(dev->dev_addr, mdev->dev->caps.def_mac[priv->port]);
+	{
+		unsigned char mac[ETH_ALEN + 2];
+
+		mlx4_en_u64_to_mac(mac, mdev->dev->caps.def_mac[priv->port]);
+		eth_hw_addr_set(dev, mac);
+	}
 	if (!is_valid_ether_addr(dev->dev_addr)) {
 		en_err(priv, "Port: %d, invalid mac burned: %pM, quitting\n",
 		       priv->port, dev->dev_addr);
@@ -5184,8 +5219,12 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 #endif
 
 #ifdef HAVE_DEVLINK_H
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,9,0)
+	devlink_port_type_eth_set(mlx4_get_devlink_port(mdev->dev, priv->port));
+#else
 	devlink_port_type_eth_set(mlx4_get_devlink_port(mdev->dev, priv->port),
 				  dev);
+#endif
 #endif
 
 	if (mlx4_is_master(priv->mdev->dev)) {

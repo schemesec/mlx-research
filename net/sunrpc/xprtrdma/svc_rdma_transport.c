@@ -46,6 +46,7 @@
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
+#include <linux/version.h>
 #include <linux/workqueue.h>
 #include <linux/export.h>
 
@@ -59,6 +60,10 @@
 #include <linux/sunrpc/svc_rdma.h>
 
 #include "xprt_rdma.h"
+
+#ifndef RPCSVC_MAXPAGES
+#define RPCSVC_MAXPAGES DIV_ROUND_UP(RPCSVC_MAXPAYLOAD, PAGE_SIZE)
+#endif
 #ifdef HAVE_TRACE_RPCRDMA_H
 #include <trace/events/rpcrdma.h>
 #endif
@@ -105,7 +110,9 @@ static struct svc_xprt_ops svc_rdma_ops = {
 #ifdef HAVE_XPO_RESULT_PAYLOAD
 	.xpo_result_payload = svc_rdma_result_payload,
 #endif
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 8, 0)
 	.xpo_release_rqst = svc_rdma_release_rqst,
+#endif
 	.xpo_detach = svc_rdma_detach,
 	.xpo_free = svc_rdma_free,
 #ifdef HAVE_SVC_XPRT_XPO_PREP_REPLY_HDR
@@ -113,7 +120,9 @@ static struct svc_xprt_ops svc_rdma_ops = {
 #endif
 	.xpo_has_wspace = svc_rdma_has_wspace,
 	.xpo_accept = svc_rdma_accept,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 8, 0)
 	.xpo_secure_port = svc_rdma_secure_port,
+#endif
 	.xpo_kill_temp_xprt = svc_rdma_kill_temp_xprt,
 };
 
@@ -137,7 +146,9 @@ static struct svc_xprt_ops svc_rdma_bc_ops = {
 #ifdef HAVE_SVC_XPRT_XPO_PREP_REPLY_HDR
     .xpo_prep_reply_hdr = svc_rdma_prep_reply_hdr,
 #endif
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 8, 0)
     .xpo_secure_port = svc_rdma_secure_port,
+#endif
 };
 
 struct svc_xprt_class svc_rdma_bc_class = {

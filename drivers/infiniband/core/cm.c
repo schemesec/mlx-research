@@ -213,6 +213,17 @@ static struct attribute *cm_counter_default_attrs[] = {
 	NULL
 };
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,13,0)
+static const struct attribute_group cm_counter_default_group = {
+	.attrs = cm_counter_default_attrs,
+};
+
+static const struct attribute_group *cm_counter_default_groups[] = {
+	&cm_counter_default_group,
+	NULL,
+};
+#endif
+
 struct cm_port {
 	struct cm_device *cm_dev;
 	struct ib_mad_agent *mad_agent;
@@ -4345,10 +4356,16 @@ static struct sysfs_ops cm_counter_ops = {
 
 static struct kobj_type cm_counter_obj_type = {
 	.sysfs_ops = &cm_counter_ops,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,13,0)
+	.default_groups = cm_counter_default_groups
+#else
 	.default_attrs = cm_counter_default_attrs
+#endif
 };
 
-#ifdef HAVE_CLASS_DEVNODE_UMODE_T
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,13,0)
+static char *cm_devnode(const struct device *dev, umode_t *mode)
+#elif defined(HAVE_CLASS_DEVNODE_UMODE_T)
 static char *cm_devnode(struct device *dev, umode_t *mode)
 #else
 static char *cm_devnode(struct device *dev, mode_t *mode)
@@ -4360,7 +4377,9 @@ static char *cm_devnode(struct device *dev, mode_t *mode)
 }
 
 struct class cm_class = {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,4,0)
 	.owner   = THIS_MODULE,
+#endif
 	.name    = "infiniband_cm",
 	.devnode = cm_devnode,
 };

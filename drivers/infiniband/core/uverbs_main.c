@@ -937,7 +937,7 @@ static void rdma_umap_close(struct vm_area_struct *vma)
  * we return a dummy writable zero page for all the pfns.
  */
 #ifdef HAVE_VM_FAULT_T
-#ifdef HAVE_VM_OPERATIONS_STRUCT_HAS_FAULT
+#ifdef HAVE_VM_FAULT_T
 static vm_fault_t rdma_umap_fault(struct vm_fault *vmf)
 #else
 static int rdma_umap_fault(struct vm_fault *vmf)
@@ -1431,7 +1431,9 @@ static void ib_uverbs_remove_one(struct ib_device *device, void *client_data)
 	put_device(&uverbs_dev->dev);
 }
 
-#ifdef HAVE_CLASS_DEVNODE_UMODE_T
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,13,0)
+static char *uverbs_devnode(const struct device *dev, umode_t *mode)
+#elif defined(HAVE_CLASS_DEVNODE_UMODE_T)
 static char *uverbs_devnode(struct device *dev, umode_t *mode)
 #else
 static char *uverbs_devnode(struct device *dev, mode_t *mode)

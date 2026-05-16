@@ -6,6 +6,7 @@
  */
 
 #include <linux/sunrpc/svc_rdma.h>
+#include <linux/version.h>
 
 #include "xprt_rdma.h"
 #ifdef HAVE_TRACE_RPCRDMA_H
@@ -248,7 +249,11 @@ static int xprt_rdma_bc_send_request(struct rpc_task *task)
 
 	ret = rpcrdma_bc_send_request(rdma, rqst);
 	if (ret == -ENOTCONN)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
+		svc_xprt_close(sxprt);
+#else
 		svc_close_xprt(sxprt);
+#endif
 	return ret;
 }
 

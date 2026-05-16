@@ -9,6 +9,7 @@
 #include <linux/cdev.h>
 #include <linux/anon_inodes.h>
 #include <linux/slab.h>
+#include <linux/sched/mm.h>
 
 #include <linux/uaccess.h>
 
@@ -40,8 +41,12 @@ unsigned long ib_uverbs_exp_get_unmapped_area(struct file *filp,
 		ret = -ENODEV;
 	} else {
 		if (!file->device->ib_dev->ops.exp_get_unmapped_area) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,12,0)
+			ret = mm_get_unmapped_area(filp, addr, len, pgoff, flags);
+#else
 			ret = current->mm->get_unmapped_area(filp, addr, len,
-								pgoff, flags);
+							     pgoff, flags);
+#endif
 			goto out;
 		}
 

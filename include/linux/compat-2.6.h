@@ -17,6 +17,7 @@
 #endif
 #include <linux/compat_autoconf.h>
 #include <linux/compat_fix.h>
+#include <linux/ofed-cx3-compat.h>
 #include <linux/init.h>
 #include <linux/module.h>
 #if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,16))

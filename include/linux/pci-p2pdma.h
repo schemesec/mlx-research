@@ -4,6 +4,7 @@
 #include_next <linux/pci-p2pdma.h>
 #include <linux/dma-mapping.h>
 #include <linux/scatterlist.h>
+#include <linux/version.h>
 
 /*
  * OFED_CX3_COMPAT_PCI_P2PDMA_MAP_SG
@@ -22,6 +23,14 @@ static inline int pci_p2pdma_map_sg(struct device *dev,
                                     int nents,
                                     enum dma_data_direction dir)
 {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,14,0)
+        /*
+         * Modern kernels route pci_p2pdma_state() through an unexported
+         * updater. External legacy OFED modules cannot use that path, and
+         * ConnectX-3 does not require PCI P2PDMA, so report unsupported.
+         */
+        return 0;
+#else
         struct pci_p2pdma_map_state state = {};
         struct scatterlist *s;
         int i;
@@ -46,6 +55,7 @@ static inline int pci_p2pdma_map_sg(struct device *dev,
         }
 
         return nents;
+#endif
 }
 
 #endif

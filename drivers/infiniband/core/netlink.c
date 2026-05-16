@@ -139,6 +139,10 @@ void rdma_nl_register(unsigned int index,
 	}
 
 	if (rdma_nl_types[index].cb_table) {
+		if (rdma_nl_types[index].cb_table == cb_table) {
+			mutex_unlock(&rdma_nl_mutex);
+			return;
+		}
 		mutex_unlock(&rdma_nl_mutex);
 		WARN(true,
 		     "The %u index is already registered in RDMA netlink\n",

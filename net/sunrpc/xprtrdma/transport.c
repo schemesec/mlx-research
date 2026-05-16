@@ -53,6 +53,8 @@
 #include <linux/slab.h>
 #include <linux/seq_file.h>
 #include <linux/smp.h>
+#include <linux/sysctl.h>
+#include <linux/version.h>
 
 #include <linux/sunrpc/addr.h>
 #include <linux/sunrpc/svc_rdma.h>
@@ -153,6 +155,7 @@ static struct ctl_table xr_tunables_table[] = {
 	{ },
 };
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 8, 0)
 static struct ctl_table sunrpc_table[] = {
 	{
 		.procname	= "sunrpc",
@@ -161,6 +164,7 @@ static struct ctl_table sunrpc_table[] = {
 	},
 	{ },
 };
+#endif
 
 #endif
 
@@ -927,7 +931,11 @@ int xprt_rdma_init(void)
 
 #if IS_ENABLED(CONFIG_SUNRPC_DEBUG)
 	if (!sunrpc_table_header)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
+		sunrpc_table_header = register_sysctl("sunrpc", xr_tunables_table);
+#else
 		sunrpc_table_header = register_sysctl_table(sunrpc_table);
+#endif
 #endif
 	return 0;
 }

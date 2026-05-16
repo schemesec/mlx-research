@@ -10,7 +10,11 @@
 #include <linux/bits.h>
 #endif
 #include <linux/bitfield.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,12,0)
+#include <linux/unaligned.h>
+#else
 #include <asm/unaligned.h>
+#endif
 
 static inline u32 _iba_get8(const u8 *ptr)
 {

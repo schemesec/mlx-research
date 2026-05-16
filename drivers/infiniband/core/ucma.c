@@ -1622,14 +1622,14 @@ static ssize_t ucma_migrate_id(struct ucma_file *new_file,
 	/* Get current fd to protect against it being closed */
 #ifdef HAVE_FDGET
 	f = fdget(cmd.fd);
-	if (!f.file)
+	if (!fd_file(f))
 #else
 	filp = fget(cmd.fd);
 	if (!filp)
 #endif
 		return -ENOENT;
 #ifdef HAVE_FDGET
-	if (f.file->f_op != &ucma_fops) {
+	if (fd_file(f)->f_op != &ucma_fops) {
 #else
 	if (filp->f_op != &ucma_fops) {
 #endif
@@ -1637,7 +1637,7 @@ static ssize_t ucma_migrate_id(struct ucma_file *new_file,
 		goto file_put;
 	}
 #ifdef HAVE_FDGET
-	cur_file = f.file->private_data;
+	cur_file = fd_file(f)->private_data;
 #else
 	cur_file = filp->private_data;
 #endif
@@ -1886,7 +1886,13 @@ static int __init ucma_init(void)
 
 #ifndef CONFIG_SYSCTL_SYSCALL_CHECK
 #ifdef HAVE_REGISTER_NET_SYSCTL
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,6,0)
+	ucma_ctl_table_hdr = register_net_sysctl_sz(&init_net, "net/rdma_ucm",
+						    ucma_ctl_table,
+						    ARRAY_SIZE(ucma_ctl_table) - 1);
+#else
 	ucma_ctl_table_hdr = register_net_sysctl(&init_net, "net/rdma_ucm", ucma_ctl_table);
+#endif
 #else
 	ucma_ctl_table_hdr = register_sysctl_paths(ucma_ctl_path,
 						   ucma_ctl_table);

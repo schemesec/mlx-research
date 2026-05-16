@@ -1964,11 +1964,16 @@ static int mlx4_en_check_rxfh_func(struct net_device *dev, u8 hfunc)
 }
 #endif
 #if defined(HAVE_GET_SET_RXFH) && !defined(HAVE_GET_SET_RXFH_INDIR_EXT)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0)
+static int mlx4_en_get_rxfh(struct net_device *dev,
+			    struct ethtool_rxfh_param *rxfh)
+#else
 #ifdef HAVE_ETH_SS_RSS_HASH_FUNCS
 static int mlx4_en_get_rxfh(struct net_device *dev, u32 *ring_index, u8 *key,
 			    u8 *hfunc)
 #else
 static int mlx4_en_get_rxfh(struct net_device *dev, u32 *ring_index, u8 *key)
+#endif
 #endif
 #elif defined(HAVE_GET_SET_RXFH_INDIR) || defined (HAVE_GET_SET_RXFH_INDIR_EXT)
 static int mlx4_en_get_rxfh_indir(struct net_device *dev, u32 *ring_index)
@@ -1980,6 +1985,12 @@ int mlx4_en_get_rxfh_indir(struct net_device *dev, u32 *ring_index)
 	u32 n = mlx4_en_get_rxfh_indir_size(dev);
 	u32 i, rss_rings;
 	int err = 0;
+#if defined(HAVE_GET_SET_RXFH) && !defined(HAVE_GET_SET_RXFH_INDIR_EXT) && \
+	LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0)
+	u32 *ring_index = rxfh->indir;
+	u8 *key = rxfh->key;
+	u8 *hfunc = &rxfh->hfunc;
+#endif
 
 	rss_rings = priv->prof->rss_rings ?: n;
 	rss_rings = rounddown_pow_of_two(rss_rings);
@@ -2001,11 +2012,17 @@ int mlx4_en_get_rxfh_indir(struct net_device *dev, u32 *ring_index)
 }
 
 #if defined(HAVE_GET_SET_RXFH) && !defined(HAVE_GET_SET_RXFH_INDIR_EXT)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0)
+static int mlx4_en_set_rxfh(struct net_device *dev,
+			    struct ethtool_rxfh_param *rxfh,
+			    struct netlink_ext_ack *extack)
+#else
 static int mlx4_en_set_rxfh(struct net_device *dev, const u32 *ring_index,
 #ifdef HAVE_ETH_SS_RSS_HASH_FUNCS
 			    const u8 *key, const u8 hfunc)
 #else
 			    const u8 *key)
+#endif
 #endif
 #elif defined(HAVE_GET_SET_RXFH_INDIR) || defined (HAVE_GET_SET_RXFH_INDIR_EXT)
 static int mlx4_en_set_rxfh_indir(struct net_device *dev, const u32 *ring_index)
@@ -2021,6 +2038,12 @@ int mlx4_en_set_rxfh_indir(struct net_device *dev, const u32 *ring_index)
 	int err = 0;
 	int i;
 	int rss_rings = 0;
+#if defined(HAVE_GET_SET_RXFH) && !defined(HAVE_GET_SET_RXFH_INDIR_EXT) && \
+	LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0)
+	const u32 *ring_index = rxfh->indir;
+	const u8 *key = rxfh->key;
+	const u8 hfunc = rxfh->hfunc;
+#endif
 
 	/* Calculate RSS table size and make sure flows are spread evenly
 	 * between rings
@@ -2727,7 +2750,11 @@ out:
 
 #if defined(HAVE_GET_TS_INFO) || defined(HAVE_GET_TS_INFO_EXT)
 static int mlx4_en_get_ts_info(struct net_device *dev,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0)
+			       struct kernel_ethtool_ts_info *info)
+#else
 			       struct ethtool_ts_info *info)
+#endif
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
 	struct mlx4_en_dev *mdev = priv->mdev;
@@ -3274,6 +3301,19 @@ const struct ethtool_ops mlx4_en_ethtool_ops = {
 	.set_wol = mlx4_en_set_wol,
 	.get_msglevel = mlx4_en_get_msglevel,
 	.set_msglevel = mlx4_en_set_msglevel,
+#ifdef ETHTOOL_COALESCE_RX_USECS
+	.supported_coalesce_params = ETHTOOL_COALESCE_RX_USECS |
+				      ETHTOOL_COALESCE_RX_MAX_FRAMES |
+				      ETHTOOL_COALESCE_TX_USECS |
+				      ETHTOOL_COALESCE_TX_MAX_FRAMES |
+				      ETHTOOL_COALESCE_TX_MAX_FRAMES_IRQ |
+				      ETHTOOL_COALESCE_USE_ADAPTIVE_RX |
+				      ETHTOOL_COALESCE_PKT_RATE_LOW |
+				      ETHTOOL_COALESCE_RX_USECS_LOW |
+				      ETHTOOL_COALESCE_PKT_RATE_HIGH |
+				      ETHTOOL_COALESCE_RX_USECS_HIGH |
+				      ETHTOOL_COALESCE_RATE_SAMPLE_INTERVAL,
+#endif
 	.get_coalesce = mlx4_en_get_coalesce,
 	.set_coalesce = mlx4_en_set_coalesce,
 	.get_pauseparam = mlx4_en_get_pauseparam,

@@ -38,6 +38,7 @@
 #include <linux/inet.h>
 #include <linux/sort.h>
 #include <linux/highmem.h>
+#include <linux/sched/mm.h>
 #include <rdma/ib_cache.h>
 #include <rdma/ib_umem.h>
 #include <rdma/ib_user_verbs.h>
@@ -2639,9 +2640,14 @@ unsigned long mlx5_ib_exp_get_unmapped_area(struct file *file,
 	unsigned long command;
 
 	mm = current->mm;
-	if (addr)
+	if (addr) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,12,0)
+		return mm_get_unmapped_area(file, addr, len, pgoff, flags);
+#else
 		return current->mm->get_unmapped_area(file, addr, len,
 						      pgoff, flags);
+#endif
+	}
 
 	command = get_command(pgoff);
 	if (command == MLX5_IB_MMAP_GET_CONTIGUOUS_PAGES ||
@@ -2649,8 +2655,13 @@ unsigned long mlx5_ib_exp_get_unmapped_area(struct file *file,
 	    command == MLX5_IB_EXP_MMAP_GET_CONTIGUOUS_PAGES_CPU_NUMA)
 		goto flow;
 
-	return current->mm->get_unmapped_area(file, addr, len,
+	return
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,12,0)
+		mm_get_unmapped_area(file, addr, len, pgoff, flags);
+#else
+		current->mm->get_unmapped_area(file, addr, len,
 						      pgoff, flags);
+#endif
 
 flow:
 	order = get_pg_order(pgoff);

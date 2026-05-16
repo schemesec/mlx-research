@@ -39,6 +39,8 @@
 #include <linux/list.h>
 #include <linux/mutex.h>
 #include <linux/netdevice.h>
+#include <linux/etherdevice.h>
+#include <linux/ethtool.h>
 #include <linux/if_vlan.h>
 #include <linux/net_tstamp.h>
 #ifdef CONFIG_MLX4_EN_DCB
@@ -53,6 +55,7 @@
 #ifdef HAVE_NET_XDP_H
 #include <net/xdp.h>
 #endif
+#include <net/rps.h>
 
 #include <linux/mlx4/device.h>
 #include <linux/mlx4/qp.h>

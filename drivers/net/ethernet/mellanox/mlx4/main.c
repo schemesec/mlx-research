@@ -4733,7 +4733,7 @@ err_disable_pdev:
 	mlx4_pci_disable_device(&priv->dev);
 	return err;
 }
-#ifdef HAVE_DEVLINK_H
+#if defined(HAVE_DEVLINK_H) && LINUX_VERSION_CODE < KERNEL_VERSION(6,9,0)
 static int mlx4_devlink_port_type_set(struct devlink_port *devlink_port,
 				      enum devlink_port_type port_type)
 {
@@ -4758,7 +4758,7 @@ static int mlx4_devlink_port_type_set(struct devlink_port *devlink_port,
 
 	return __set_port_type(info, mlx4_port_type);
 }
-#endif /*HAVE_DEVLINK_H*/
+#endif /* HAVE_DEVLINK_H && LINUX_VERSION_CODE < KERNEL_VERSION(6,9,0) */
 
 #if defined(HAVE_DEVLINK_PARAM) && defined(HAVE_DEVLINK_PARAMS_PUBLISHED)
 static void mlx4_devlink_param_load_driverinit_values(struct devlink *devlink)
@@ -4890,7 +4890,9 @@ static int mlx4_devlink_reload(struct devlink *devlink)
 
 #ifdef HAVE_DEVLINK_H
 static const struct devlink_ops mlx4_devlink_ops = {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,9,0)
 	.port_type_set	= mlx4_devlink_port_type_set,
+#endif
 #ifdef HAVE_DEVLINK_RELOAD_DOWN_SUPPORT_RELOAD_ACTION
 	.reload_actions = BIT(DEVLINK_RELOAD_ACTION_DRIVER_REINIT),
 #endif

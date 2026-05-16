@@ -1202,8 +1202,14 @@ static int __init iw_cm_init(void)
 
 #ifndef CONFIG_SYSCTL_SYSCALL_CHECK
 #ifdef HAVE_REGISTER_NET_SYSCTL
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,6,0)
+	iwcm_ctl_table_hdr = register_net_sysctl_sz(&init_net, "net/iw_cm",
+						    iwcm_ctl_table,
+						    ARRAY_SIZE(iwcm_ctl_table) - 1);
+#else
 	iwcm_ctl_table_hdr = register_net_sysctl(&init_net, "net/iw_cm",
 						 iwcm_ctl_table);
+#endif
 #else
 	iwcm_ctl_table_hdr = register_sysctl_paths(iwcm_ctl_path,
 						   iwcm_ctl_table);

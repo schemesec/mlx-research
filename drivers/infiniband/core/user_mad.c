@@ -1189,7 +1189,9 @@ ATTRIBUTE_GROUPS(umad_class_dev);
 static DEVICE_ATTR(port, S_IRUGO, show_port, NULL);
 #endif
 
-#ifdef HAVE_CLASS_DEVNODE_UMODE_T
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,13,0)
+static char *umad_devnode(const struct device *dev, umode_t *mode)
+#elif defined(HAVE_CLASS_DEVNODE_UMODE_T)
 static char *umad_devnode(struct device *dev, umode_t *mode)
 #else
 static char *umad_devnode(struct device *dev, mode_t *mode)
@@ -1199,8 +1201,13 @@ static char *umad_devnode(struct device *dev, mode_t *mode)
 }
 
 #ifdef HAVE_CLASS_GROUPS
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,13,0)
+static ssize_t abi_version_show(const struct class *class,
+				const struct class_attribute *attr, char *buf)
+#else
 static ssize_t abi_version_show(struct class *class,
 				struct class_attribute *attr, char *buf)
+#endif
 {
 	return sprintf(buf, "%d\n", IB_USER_MAD_ABI_VERSION);
 }

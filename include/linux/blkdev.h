@@ -2,6 +2,7 @@
 #define _COMPAT_LINUX_BLKDEV_H
 
 #include "../../compat/config.h"
+#include <linux/version.h>
 
 #include_next <linux/blkdev.h>
 
@@ -22,14 +23,14 @@
 #endif
 #endif
 
-#ifndef HAVE_BLK_RQ_IS_PASSTHROUGH
+#if !defined(HAVE_BLK_RQ_IS_PASSTHROUGH) && LINUX_VERSION_CODE < KERNEL_VERSION(4,12,0)
 static inline bool blk_rq_is_passthrough(struct request *rq)
 {
 	return rq->cmd_type != REQ_TYPE_FS;
 }
 #endif
 
-#ifndef HAVE_BLK_QUEUE_WRITE_CACHE
+#if !defined(HAVE_BLK_QUEUE_WRITE_CACHE) && LINUX_VERSION_CODE < KERNEL_VERSION(4,10,0)
 #ifdef HAVE_QUEUE_FLAG_WC_FUA
 static inline void blk_queue_write_cache(struct request_queue *q, bool wc, bool fua)
 {
@@ -85,7 +86,7 @@ static inline bool blk_queue_flag_test_and_set(unsigned int flag, struct request
 }
 #endif
 
-#ifndef HAVE_QUEUE_FLAG_PCI_P2PDMA
+#if !defined(HAVE_QUEUE_FLAG_PCI_P2PDMA) && LINUX_VERSION_CODE < KERNEL_VERSION(5,12,0)
 static inline unsigned int blk_queue_pci_p2pdma(struct request_queue *q)
 {
 	return 0;

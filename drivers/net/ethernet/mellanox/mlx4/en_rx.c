@@ -631,7 +631,11 @@ fail:
 	while (nr > 0) {
 		nr--;
 #ifndef CONFIG_COMPAT_LRO_ENABLED
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,12,0)
+		skb_frag_unref(skb, nr);
+#else
 		__skb_frag_unref(skb_shinfo(skb)->frags + nr);
+#endif
 #else
 		__skb_frag_unref(skb_frags_rx + nr);
 #endif

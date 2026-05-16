@@ -370,7 +370,7 @@ static int crdump_proc_open(struct inode *inode, struct file *file)
 {
 	struct seq_file *seq;
 	int ret;
-#ifndef HAVE_PDE_DATA
+#if !defined(HAVE_PDE_DATA) && LINUX_VERSION_CODE < KERNEL_VERSION(5,17,0)
 	struct proc_dir_entry *pde;
 #endif
 
@@ -381,6 +381,8 @@ static int crdump_proc_open(struct inode *inode, struct file *file)
 	seq = file->private_data;
 #ifdef HAVE_PDE_DATA
 	seq->private = PDE_DATA(inode);
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5,17,0)
+	seq->private = pde_data(inode);
 #else
 	pde = PDE(inode);
 	seq->private = pde->data;
@@ -388,6 +390,14 @@ static int crdump_proc_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,6,0)
+static const struct proc_ops crdump_proc_fops = {
+	.proc_open	= crdump_proc_open,
+	.proc_read	= seq_read,
+	.proc_lseek	= seq_lseek,
+	.proc_release	= seq_release,
+};
+#else
 static const struct file_operations crdump_proc_fops = {
 	.owner		= THIS_MODULE,
 	.open		= crdump_proc_open,
@@ -395,6 +405,7 @@ static const struct file_operations crdump_proc_fops = {
 	.llseek		= seq_lseek,
 	.release	= seq_release,
 };
+#endif
 
 int mlx4_crdump_init(struct mlx4_dev *dev)
 {

@@ -30,6 +30,8 @@
  * SOFTWARE.
  */
 
+#include <linux/kobject.h>
+#include <linux/version.h>
 #include <rdma/ib_peer_mem.h>
 #include <rdma/ib_verbs.h>
 #include <rdma/ib_umem.h>
@@ -185,8 +187,13 @@ static int create_peer_sysfs(struct ib_peer_memory_client *ib_peer_client)
 	int ret;
 
 	if (list_empty(&peer_memory_list)) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,14,0)
+		/* mm_kobj is not exported to external modules on newer kernels. */
+		peers_kobj = kobject_create_and_add("memory_peers", kernel_kobj);
+#else
 		/* creating under /sys/kernel/mm */
 		peers_kobj = kobject_create_and_add("memory_peers", mm_kobj);
+#endif
 		if (!peers_kobj)
 			return -ENOMEM;
 	}

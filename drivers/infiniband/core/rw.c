@@ -289,7 +289,7 @@ int rdma_rw_ctx_init(struct rdma_rw_ctx *ctx, struct ib_qp *qp, u8 port_num,
 {
 	struct ib_device *dev = qp->pd->device;
 	int ret;
-#ifdef HAVE_PCI_P2PDMA_H
+#if defined(HAVE_PCI_P2PDMA_H) && LINUX_VERSION_CODE < KERNEL_VERSION(6,14,0)
 	if (is_pci_p2pdma_page(sg_page(sg)))
 		ret = pci_p2pdma_map_sg(dev->dma_device, sg, sg_cnt, dir);
 	else
@@ -584,7 +584,7 @@ void rdma_rw_ctx_destroy(struct rdma_rw_ctx *ctx, struct ib_qp *qp, u8 port_num,
 	}
 
 	/* P2PDMA contexts do not need to be unmapped */
-#ifdef HAVE_PCI_P2PDMA_H
+#if defined(HAVE_PCI_P2PDMA_H) && LINUX_VERSION_CODE < KERNEL_VERSION(6,14,0)
 	if (!is_pci_p2pdma_page(sg_page(sg)))
 #endif
 		ib_dma_unmap_sg(qp->pd->device, sg, sg_cnt, dir);
