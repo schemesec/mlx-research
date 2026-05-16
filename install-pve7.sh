@@ -142,8 +142,15 @@ if [ "$BUILD_ONLY" -ne 1 ] && [ "$(id -u)" -ne 0 ]; then
 fi
 
 if [ "$NO_BUILD" -eq 0 ]; then
+	log "=== clean prior build outputs ==="
+	run make -C "/lib/modules/${KVER}/build" "M=${REPO_ROOT}" clean
+	run make -C "/lib/modules/${KVER}/build" "M=${REPO_ROOT}/net/sunrpc/xprtrdma" clean
+	run make -C "/lib/modules/${KVER}/build" "M=${REPO_ROOT}/drivers/infiniband/ulp/iser" clean
+	log
+
 	log "=== build base mlx4/RDMA modules ==="
 	run make "CWD=${REPO_ROOT}" "MLNX_PYTHON=${MLNX_PYTHON}" \
+		MLNX_CFLAGS= KCFLAGS=-mfunction-return=keep \
 		CFLAGS_RETPOLINE= CONFIG_RETPOLINE=y \
 		CONFIG_INFINIBAND_USER_MAD=m \
 		"-j${JOBS}"
@@ -155,6 +162,7 @@ if [ "$NO_BUILD" -eq 0 ]; then
 		"OFA_DIR=${REPO_ROOT}" \
 		"SRC_DIR=${REPO_ROOT}" \
 		"KVER=${KVER}" \
+		KCFLAGS=-mfunction-return=keep \
 		-C net/sunrpc/xprtrdma
 	log
 
@@ -164,6 +172,7 @@ if [ "$NO_BUILD" -eq 0 ]; then
 		"OFA_DIR=${REPO_ROOT}" \
 		"SRC_DIR=${REPO_ROOT}" \
 		"KVER=${KVER}" \
+		KCFLAGS=-mfunction-return=keep \
 		-C drivers/infiniband/ulp/iser
 	log
 else
