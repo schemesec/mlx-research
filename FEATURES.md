@@ -108,4 +108,30 @@ Known failing stock modules:
 
 The observed failure is real: `Unknown symbol` and `disagrees about version of
 symbol` errors against the ported RDMA core. Those errors must be fixed by
-building matching modules, not hidden by verifier filtering.
+making the OFED kernel ABI compatible with the surrounding Proxmox modules, or
+only as a fallback by building matching OFED upper-layer modules. The preferred
+goal is compatibility with the existing Proxmox module stack.
+
+For repeatable checks, run:
+
+```bash
+./audit-module-compat.sh \
+  /lib/modules/$(uname -r)/kernel/drivers/nvme/host/nvme-rdma.ko \
+  /lib/modules/$(uname -r)/kernel/drivers/nvme/target/nvmet-rdma.ko
+```
+
+The first known ABI gaps for stock NVMe/RDMA are:
+
+- CRC mismatch for exported names that OFED already has, including
+  `ib_mr_pool_destroy`, `ib_mr_pool_get`, `ib_mr_pool_init`,
+  `ib_mr_pool_put`, `ib_register_client`, `ib_unregister_client`,
+  `rdma_connect_locked`, `rdma_create_qp`, `rdma_event_msg`, and
+  `rdma_resolve_addr`.
+- Missing Proxmox/stock exports in this OFED core, including `__ib_alloc_cq`,
+  `ib_free_cq`, `ib_cq_pool_get`, `ib_cq_pool_put`, `ib_dma_virt_map_sg`, and
+  `__rdma_create_kernel_id`.
+
+The CRC mismatches are the harder part: they mean the public prototypes or
+types visible to module versioning do not match the stock Proxmox RDMA ABI.
+Adding wrappers only addresses the missing symbols; it does not make the
+existing mismatched symbols compatible.
