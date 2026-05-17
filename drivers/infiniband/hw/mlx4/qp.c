@@ -1537,7 +1537,7 @@ static struct ib_qp *_mlx4_ib_create_qp(struct ib_pd *pd,
 	int sup_u_create_flags = MLX4_IB_QP_BLOCK_MULTICAST_LOOPBACK | MLX4_IB_QP_CROSS_CHANNEL |
 			            MLX4_IB_QP_MANAGED_SEND | MLX4_IB_QP_MANAGED_RECV;
 	u16 xrcdn = 0;
-#ifndef HAVE_MEMALLOC_NOIO_SAVE
+#if !defined(HAVE_MEMALLOC_NOIO_SAVE) && !defined(CONFIG_MLX4_IB_STOCK_RDMA_ABI)
 	gfp_t gfp;
 
 	gfp = (init_attr->create_flags & MLX4_IB_QP_CREATE_USE_GFP_NOIO) ?
@@ -1561,6 +1561,8 @@ static struct ib_qp *_mlx4_ib_create_qp(struct ib_pd *pd,
 					MLX4_IB_QP_NETIF |
 #ifdef HAVE_MEMALLOC_NOIO_SAVE
 					MLX4_IB_QP_CREATE_ROCE_V2_GSI))
+#elif defined(CONFIG_MLX4_IB_STOCK_RDMA_ABI)
+					MLX4_IB_QP_CREATE_ROCE_V2_GSI))
 #else
 					MLX4_IB_QP_CREATE_ROCE_V2_GSI |
 					MLX4_IB_QP_CREATE_USE_GFP_NOIO))
@@ -1582,7 +1584,7 @@ static struct ib_qp *_mlx4_ib_create_qp(struct ib_pd *pd,
 		      IB_QP_CREATE_MANAGED_RECV)) {
 
 			if ((init_attr->create_flags & ~(MLX4_IB_SRIOV_SQP |
-#ifndef HAVE_MEMALLOC_NOIO_SAVE
+#if !defined(HAVE_MEMALLOC_NOIO_SAVE) && !defined(CONFIG_MLX4_IB_STOCK_RDMA_ABI)
 							 MLX4_IB_QP_CREATE_USE_GFP_NOIO |
 #endif
 							 MLX4_IB_QP_CREATE_ROCE_V2_GSI  |

@@ -779,6 +779,7 @@ err_free:
 	return ERR_PTR(err);
 }
 
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 struct ib_fmr *mlx4_ib_fmr_alloc(struct ib_pd *pd, int acc,
 				 struct ib_fmr_attr *fmr_attr)
 {
@@ -871,6 +872,7 @@ int mlx4_ib_fmr_dealloc(struct ib_fmr *ibfmr)
 
 	return err;
 }
+#endif
 
 static int mlx4_set_page(struct ib_mr *ibmr, u64 addr)
 {

@@ -119,6 +119,19 @@ gaps are in `mlx4_ib.h`:
 Those are OFED-era interfaces that need to be gated, mapped to stock Proxmox
 equivalents, or removed from the stock-RDMA build mode.
 
+After gating those interfaces and adding stock-RDMA mappings for CQ and
+doorbell user-memory handling, the isolated `mlx4_ib` build reaches `mad.o`.
+The current blocker is the mlx4 counter/stat API used by `mad.c`
+(`mlx4_counter.basic/ext`, `MLX4_IF_CNT_MODE_*`, `struct mlx4_if_stat_*`) plus
+`mlx4_vlan_blocked`.
+
+That blocker also shows that the isolated `M=drivers/infiniband/hw/mlx4` probe
+is still resolving some stock kernel `linux/mlx4` headers. The intended Option B
+shape is not "OFED mlx4_ib against stock mlx4_core"; it is the matched OFED
+`mlx4_core`/`mlx4_en`/`mlx4_ib` family against the stock Proxmox RDMA public
+ABI. The build mode therefore needs to force the matched OFED `linux/mlx4`
+headers while using stock `include/rdma` and `include/uapi/rdma`.
+
 ## Next Implementation Direction
 
 Create a deliberate stock-RDMA-ABI build mode instead of continuing with ad hoc

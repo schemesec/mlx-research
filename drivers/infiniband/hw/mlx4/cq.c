@@ -104,7 +104,7 @@ static int mlx4_ib_alloc_cq_buf(struct mlx4_ib_dev *dev, struct mlx4_ib_cq_buf *
 	int err;
 
 	err = mlx4_buf_alloc(dev->dev, nent * dev->dev->caps.cqe_size,
-#ifdef HAVE_MEMALLOC_NOIO_SAVE
+#if defined(HAVE_MEMALLOC_NOIO_SAVE) || defined(CONFIG_MLX4_IB_STOCK_RDMA_ABI)
 			     PAGE_SIZE * 2, &buf->buf);
 #else
 			     PAGE_SIZE * 2, &buf->buf, GFP_KERNEL);
@@ -119,7 +119,7 @@ static int mlx4_ib_alloc_cq_buf(struct mlx4_ib_dev *dev, struct mlx4_ib_cq_buf *
 	if (err)
 		goto err_buf;
 
-#ifdef HAVE_MEMALLOC_NOIO_SAVE
+#if defined(HAVE_MEMALLOC_NOIO_SAVE) || defined(CONFIG_MLX4_IB_STOCK_RDMA_ABI)
 	err = mlx4_buf_write_mtt(dev->dev, &buf->mtt, &buf->buf);
 #else
 	err = mlx4_buf_write_mtt(dev->dev, &buf->mtt, &buf->buf, GFP_KERNEL);
@@ -153,12 +153,21 @@ static int mlx4_ib_get_cq_umem(struct mlx4_ib_dev *dev, struct ib_udata *udata,
 	int shift;
 	int n;
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	*umem = ib_umem_get(&dev->ib_dev, buf_addr, cqe * cqe_size,
+			    IB_ACCESS_LOCAL_WRITE);
+#else
 	*umem = ib_umem_get(udata, buf_addr, cqe * cqe_size,
 			    IB_ACCESS_LOCAL_WRITE, 1, IB_PEER_MEM_ALLOW);
+#endif
 	if (IS_ERR(*umem))
 		return PTR_ERR(*umem);
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	n = ib_umem_num_pages(*umem);
+#else
 	n = ib_umem_page_count(*umem);
+#endif
 	shift = mlx4_ib_umem_calc_optimal_mtt_size(*umem, 0, &n);
 	err = mlx4_mtt_init(dev->dev, n, shift, &buf->mtt);
 
@@ -236,7 +245,7 @@ struct ib_cq *mlx4_ib_create_cq(struct ib_device *ibdev,
 		uar = &context->uar;
 		cq->mcq.usage = MLX4_RES_USAGE_USER_VERBS;
 	} else {
-#ifdef HAVE_MEMALLOC_NOIO_SAVE
+#if defined(HAVE_MEMALLOC_NOIO_SAVE) || defined(CONFIG_MLX4_IB_STOCK_RDMA_ABI)
 		err = mlx4_db_alloc(dev->dev, &cq->db, 1);
 #else
 		err = mlx4_db_alloc(dev->dev, &cq->db, 1, GFP_KERNEL);
@@ -259,9 +268,11 @@ struct ib_cq *mlx4_ib_create_cq(struct ib_device *ibdev,
 		cq->mcq.usage = MLX4_RES_USAGE_DRIVER;
 	}
 
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	if (dev->eq_table)
 		vector = mlx4_choose_vector(dev->dev, vector,
 					    ibdev->num_comp_vectors);
+#endif
 
 	err = mlx4_cq_alloc(dev->dev, entries, &cq->buf.mtt, uar, cq->db.dma,
 			    &cq->mcq, vector, 0,

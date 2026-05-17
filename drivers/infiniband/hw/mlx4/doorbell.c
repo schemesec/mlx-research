@@ -64,7 +64,13 @@ int mlx4_ib_db_map_user(struct ib_udata *udata, unsigned long virt,
 
 	page->user_virt = (virt & PAGE_MASK);
 	page->refcnt    = 0;
-	page->umem = ib_umem_get(udata, virt & PAGE_MASK, PAGE_SIZE, 0, 0,IB_PEER_MEM_ALLOW);
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	page->umem = ib_umem_get(context->ibucontext.device, virt & PAGE_MASK,
+				 PAGE_SIZE, 0);
+#else
+	page->umem = ib_umem_get(udata, virt & PAGE_MASK, PAGE_SIZE, 0, 0,
+				 IB_PEER_MEM_ALLOW);
+#endif
 	if (IS_ERR(page->umem)) {
 		err = PTR_ERR(page->umem);
 		kfree(page);
@@ -74,7 +80,11 @@ int mlx4_ib_db_map_user(struct ib_udata *udata, unsigned long virt,
 	list_add(&page->list, &context->db_page_list);
 
 found:
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	db->dma = ib_umem_start_dma_addr(page->umem) + (virt & ~PAGE_MASK);
+#else
 	db->dma = sg_dma_address(page->umem->sg_head.sgl) + (virt & ~PAGE_MASK);
+#endif
 	db->u.user_page = page;
 	++page->refcnt;
 

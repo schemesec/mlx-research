@@ -165,10 +165,12 @@ struct mlx4_ib_mw {
 	struct mlx4_mw		mmw;
 };
 
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 struct mlx4_ib_fmr {
 	struct ib_fmr           ibfmr;
 	struct mlx4_fmr         mfmr;
 };
+#endif
 
 #define MAX_REGS_PER_FLOW 2
 
@@ -213,7 +215,7 @@ struct mlx4_ib_user_uar {
 	struct list_head	list;
 };
 enum mlx4_ib_qp_flags {
-#ifndef HAVE_MEMALLOC_NOIO_SAVE
+#if !defined(HAVE_MEMALLOC_NOIO_SAVE) && !defined(CONFIG_MLX4_IB_STOCK_RDMA_ABI)
 	MLX4_IB_QP_CREATE_USE_GFP_NOIO = IB_QP_CREATE_USE_GFP_NOIO,
 #endif
 	MLX4_IB_QP_LSO = IB_QP_CREATE_IPOIB_UD_LSO,
@@ -372,7 +374,9 @@ struct mlx4_ib_qp {
 	u8			sq_no_prefetch;
 	u8			state;
 	int			mlx_type;
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	enum ib_qpg_type	qpg_type;
+#endif
 	struct mlx4_ib_qpg_data *qpg_data;
 	u32			inl_recv_sz;
 	struct list_head	gid_list;
@@ -734,10 +738,12 @@ static inline struct mlx4_ib_mw *to_mmw(struct ib_mw *ibmw)
 	return container_of(ibmw, struct mlx4_ib_mw, ibmw);
 }
 
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 static inline struct mlx4_ib_fmr *to_mfmr(struct ib_fmr *ibfmr)
 {
 	return container_of(ibfmr, struct mlx4_ib_fmr, ibfmr);
 }
+#endif
 
 static inline struct mlx4_ib_flow *to_mflow(struct ib_flow *ibflow)
 {
@@ -852,12 +858,14 @@ int mlx4_ib_process_mad(struct ib_device *ibdev, int mad_flags,	u8 port_num,
 int mlx4_ib_mad_init(struct mlx4_ib_dev *dev);
 void mlx4_ib_mad_cleanup(struct mlx4_ib_dev *dev);
 
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 struct ib_fmr *mlx4_ib_fmr_alloc(struct ib_pd *pd, int mr_access_flags,
 				  struct ib_fmr_attr *fmr_attr);
 int mlx4_ib_map_phys_fmr(struct ib_fmr *ibfmr, u64 *page_list, int npages,
 			 u64 iova);
 int mlx4_ib_unmap_fmr(struct list_head *fmr_list);
 int mlx4_ib_fmr_dealloc(struct ib_fmr *fmr);
+#endif
 int __mlx4_ib_query_port(struct ib_device *ibdev, u8 port,
 			 struct ib_port_attr *props, int netw_view);
 int __mlx4_ib_query_pkey(struct ib_device *ibdev, u8 port, u16 index,
