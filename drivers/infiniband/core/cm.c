@@ -2041,9 +2041,13 @@ static int cm_req_handler(struct cm_work *work)
 
 	cm_process_routed_req(req_msg, work->mad_recv_wc->wc);
 
-	memset(&work->path[0], 0, sizeof(work->path[0]));
-	if (cm_req_has_alt_path(req_msg))
-		memset(&work->path[1], 0, sizeof(work->path[1]));
+	{
+		struct sa_path_rec *path = work->path;
+
+		memset(path, 0, sizeof(*path));
+		if (cm_req_has_alt_path(req_msg))
+			memset(path + 1, 0, sizeof(*path));
+	}
 	grh = rdma_ah_read_grh(&cm_id_priv->av.ah_attr);
 	gid_attr = grh->sgid_attr;
 
@@ -3316,7 +3320,11 @@ static int cm_lap_handler(struct cm_work *work)
 		return -EINVAL;
 
 	param = &work->cm_event.param.lap_rcvd;
-	memset(&work->path[0], 0, sizeof(work->path[1]));
+	{
+		struct sa_path_rec *path = work->path;
+
+		memset(path, 0, sizeof(*path));
+	}
 	cm_path_set_rec_type(work->port->cm_dev->ib_device,
 			     work->port->port_num,
 			     &work->path[0],
