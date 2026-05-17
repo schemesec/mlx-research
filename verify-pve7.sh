@@ -4,6 +4,9 @@ set -euo pipefail
 PF="${PF:-enp23s0}"
 NUM_VFS="${NUM_VFS:-8}"
 VF_VLAN="${VF_VLAN:-20}"
+ROCE_MODE="${ROCE_MODE:-2}"
+UD_GID_TYPE="${UD_GID_TYPE:-2}"
+RDMA_DEV="${RDMA_DEV:-rocep23s0}"
 INSTALL_DIR="${INSTALL_DIR:-/lib/modules/$(uname -r)/updates/mlnx-ofed-cx3}"
 FW_PREFIX="${FW_PREFIX:-2.42.5}"
 CHECK_VLAN_IPS="${CHECK_VLAN_IPS:-1}"
@@ -72,6 +75,25 @@ check_module_path() {
        fi
 }
 
+check_module_param() {
+       local param="$1"
+       local expected="$2"
+       local path="/sys/module/mlx4_core/parameters/${param}"
+       local actual
+
+       if [ ! -f "$path" ]; then
+               fail "mlx4_core parameter missing: $param"
+               return
+       fi
+
+       actual="$(cat "$path")"
+       if [ "$actual" = "$expected" ]; then
+               pass "mlx4_core $param=$expected"
+       else
+               fail "mlx4_core $param mismatch: expected $expected, got $actual"
+       fi
+}
+
 section "host"
 hostname
 uname -r
@@ -98,6 +120,24 @@ done
 section "mlx-research module resolution"
 for module in mlx4_core mlx4_en mlx4_ib ib_core rdma_cm ib_uverbs; do
        check_module_path "$module"
+done
+
+section "RoCE mode"
+check_module_param roce_mode "$ROCE_MODE"
+check_module_param ud_gid_type "$UD_GID_TYPE"
+
+for port in 1 2; do
+       roce_mode_file="/sys/kernel/config/rdma_cm/${RDMA_DEV}/ports/${port}/default_roce_mode"
+       if [ ! -f "$roce_mode_file" ]; then
+               fail "missing RDMA-CM default_roce_mode: $roce_mode_file"
+               continue
+       fi
+
+       if [ "$(cat "$roce_mode_file")" = "RoCE v2" ]; then
+               pass "$RDMA_DEV port $port RDMA-CM default_roce_mode=RoCE v2"
+       else
+               fail "$RDMA_DEV port $port RDMA-CM default_roce_mode is not RoCE v2"
+       fi
 done
 
 section "firmware and RDMA devices"
