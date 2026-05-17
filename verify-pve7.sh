@@ -108,22 +108,24 @@ else
        ibv_devinfo -d rocep23s0 2>/dev/null | grep 'fw_ver:' || true
 fi
 
-ibv_devices || true
-if ibv_devices | awk '{print $1}' | grep -qx rocep23s0; then
+ibv_devices_output="$(ibv_devices)"
+printf '%s\n' "$ibv_devices_output"
+if grep -qx rocep23s0 <<<"$(printf '%s\n' "$ibv_devices_output" | awk '{print $1}')"; then
        pass "PF RDMA device rocep23s0 present"
 else
        fail "PF RDMA device rocep23s0 missing"
 fi
 
-vf_rdma_count="$(ibv_devices | awk '$1 ~ /^mlx4_[0-9]+$/ {count++} END {print count + 0}')"
+vf_rdma_count="$(printf '%s\n' "$ibv_devices_output" | awk '$1 ~ /^mlx4_[0-9]+$/ {count++} END {print count + 0}')"
 if [ "$vf_rdma_count" -eq "$NUM_VFS" ]; then
        pass "$NUM_VFS VF RDMA devices present"
 else
        fail "expected $NUM_VFS VF RDMA devices, found $vf_rdma_count"
 fi
 
-rdma link show || true
-if rdma link show | grep -q "rocep23s0/1 state ACTIVE"; then
+rdma_link_output="$(rdma link show)"
+printf '%s\n' "$rdma_link_output"
+if grep -q "rocep23s0/1 state ACTIVE" <<<"$rdma_link_output"; then
        pass "PF RDMA port is active"
 else
        fail "PF RDMA port is not active"
