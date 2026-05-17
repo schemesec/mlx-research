@@ -8,7 +8,7 @@ only. Do not treat this as production-ready driver packaging.
 - Date checked: 2026-05-17
 - Host: `pvs3`
 - Kernel: `7.0.2-2-pve`
-- Repo commit: `e09d07f`
+- Repo commit: `410bb88`
 - CX3 Pro firmware: `2.42.5000`
 - PF: `enp23s0`
 - VFs: `8`
@@ -16,6 +16,7 @@ only. Do not treat this as production-ready driver packaging.
 - PF VLAN IPs:
   - `enp23s0.10`: `192.168.10.56/24`
   - `enp23s0.20`: `192.168.20.56/24`
+- Reboot persistence: verifier was run after reboot and reported passing.
 
 Validated outcomes:
 
@@ -31,8 +32,7 @@ Validated outcomes:
 - PF and VLAN interfaces expose nonzero RoCE v2 GIDs.
 - Proxmox services remain active.
 - PF RDMA device is active.
-- Host-owned VFs expose host RDMA devices; VFs assigned to `vfio-pci` are
-  treated as VM passthrough and are not expected to have host netdevs.
+- All 8 VFs are host-owned after reboot and expose host RDMA devices.
 - VF netdev MACs are stable after reboot:
   - `02:9a:0a:d0:90:00` through `02:9a:0a:d0:90:07`
 - All VFs are assigned VLAN 20.
