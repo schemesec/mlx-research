@@ -8,7 +8,7 @@ only. Do not treat this as production-ready driver packaging.
 - Date checked: 2026-05-17
 - Host: `pvs3`
 - Kernel: `7.0.2-2-pve`
-- Repo commit: `d15f8af`
+- Repo commit: `d101c78`
 - CX3 Pro firmware: `2.42.5000`
 - PF: `enp23s0`
 - VFs: `8`
@@ -49,3 +49,26 @@ Local VF RoCEv2 `ib_write_bw` test:
 - Client:
   `ib_write_bw -d rocep23s0 -i 1 -R -x 5 -F --report_gbits 192.168.20.156`
 - Result: `48.35 Gb/sec` average.
+
+Cross-host PF RoCEv2 `ib_write_bw` test:
+
+- Peer host: `pvs1`
+- pvs1 VLAN20 IP/GID: `192.168.20.50`, `mlx4_0`, GID index `5`
+- pvs3 VLAN20 IP/GID: `192.168.20.56`, `rocep23s0`, GID index `5`
+- pvs3 server:
+  `ib_write_bw -d rocep23s0 -i 1 -R -x 5 -F --report_gbits -s 65536`
+- pvs1 client:
+  `ib_write_bw -d mlx4_0 -i 1 -R -x 5 -F --report_gbits -s 65536 192.168.20.56`
+- Result: `49.56 Gb/sec` average.
+
+Cross-host VF RoCEv2 `ib_write_bw` test:
+
+- Peer host: `pvs1`
+- Temporary pvs3 VF IP: `enp23s0v0 = 192.168.20.156/24`
+- pvs1 VLAN20 IP/GID: `192.168.20.50`, `mlx4_0`, GID index `5`
+- pvs3 VF IP/GID: `192.168.20.156`, `mlx4_1`, GID index `3`
+- pvs3 VF server:
+  `ib_write_bw -d mlx4_1 -i 1 -R -x 3 -F --report_gbits -s 65536`
+- pvs1 client:
+  `ib_write_bw -d mlx4_0 -i 1 -R -x 5 -F --report_gbits -s 65536 192.168.20.156`
+- Result: `49.65 Gb/sec` average.
