@@ -112,6 +112,9 @@ See [FEATURES.md](FEATURES.md) for the current feature-completeness status.
 The validated RoCEv2 PF/VF path is not yet the full OFED feature goal:
 NVMe/RDMA, IPoIB, several RDMA ULPs, and flow-steering/offload tuning still
 need matching ported modules or explicit validation.
+See [PORTING.md](PORTING.md) for the compatibility-first porting direction and
+the distinction between a full replacement OFED stack and a ported mlx4 driver
+family that keeps the stock Proxmox RDMA ABI.
 
 The installer builds with the retpoline-safe flags required by the Proxmox 7
 kernel, installs the known-good mlx4/RDMA module set into
