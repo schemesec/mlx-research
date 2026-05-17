@@ -446,13 +446,12 @@ static void enum_netdev_ipv6_ips(struct ib_device *ib_dev,
 		union ib_gid	gid;
 
 		/*
-		 * ConnectX-3 firmware rejects programming VLAN-scoped IPv6
-		 * link-local RoCE GIDs. VLAN IPv4 RoCEv2 GIDs are still added
-		 * above, and non-link-local IPv6 addresses remain eligible.
+		 * Default GIDs already cover Ethernet link-local addresses.
+		 * Avoid adding the same link-local GID again from IPv6 address
+		 * enumeration; CX3 firmware rejects that duplicate programming.
 		 */
-		if (rdma_vlan_dev_real_dev(ndev) &&
-		    (ipv6_addr_type(&sin6_iter->sin6.sin6_addr) &
-		     IPV6_ADDR_LINKLOCAL)) {
+		if (ipv6_addr_type(&sin6_iter->sin6.sin6_addr) &
+		    IPV6_ADDR_LINKLOCAL) {
 			list_del(&sin6_iter->list);
 			kfree(sin6_iter);
 			continue;
