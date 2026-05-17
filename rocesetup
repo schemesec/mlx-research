@@ -11,6 +11,7 @@ INSTALL_PACKAGES="${INSTALL_PACKAGES:-0}"
 SET_CONFIGFS_ROCE_MODE="${SET_CONFIGFS_ROCE_MODE:-1}"
 PERSIST_INTERFACES="${PERSIST_INTERFACES:-1}"
 INTERFACES_FILE="${INTERFACES_FILE:-/etc/network/interfaces}"
+RDMA_CM_SERVICE="${RDMA_CM_SERVICE:-cx3pro-rdma-cm-roce.service}"
 
 usage() {
        cat <<EOF
@@ -180,6 +181,72 @@ write_interfaces_config() {
        echo "persisted_ifupdown_config=${file}"
 }
 
+install_rdma_cm_roce_service() {
+       local rdma_dev="$1"
+
+       cat >/usr/local/sbin/cx3pro-set-rdma-cm-roce-mode.sh <<'ROCEHELPER'
+#!/usr/bin/env bash
+set -euo pipefail
+
+RDMA_DEV="${RDMA_DEV:-rocep23s0}"
+ROCE_MODE="${ROCE_MODE:-RoCE v2}"
+
+mount | grep -q ' /sys/kernel/config ' || mount -t configfs none /sys/kernel/config
+
+for _ in $(seq 1 30); do
+       [ -d /sys/kernel/config/rdma_cm ] && break
+       sleep 1
+done
+
+if [ ! -d /sys/kernel/config/rdma_cm ]; then
+       echo "error: /sys/kernel/config/rdma_cm is missing" >&2
+       exit 1
+fi
+
+mkdir -p "/sys/kernel/config/rdma_cm/${RDMA_DEV}"
+
+count=0
+for port_dir in "/sys/kernel/config/rdma_cm/${RDMA_DEV}"/ports/*; do
+       [ -d "$port_dir" ] || continue
+       mode_file="${port_dir}/default_roce_mode"
+       if [ ! -f "$mode_file" ]; then
+               echo "error: missing ${mode_file}" >&2
+               exit 1
+       fi
+       echo "$ROCE_MODE" >"$mode_file"
+       printf '%s=%s\n' "$mode_file" "$(cat "$mode_file")"
+       count=$((count + 1))
+done
+
+if [ "$count" -eq 0 ]; then
+       echo "error: no RDMA-CM default_roce_mode files found for ${RDMA_DEV}" >&2
+       exit 1
+fi
+ROCEHELPER
+
+       chmod +x /usr/local/sbin/cx3pro-set-rdma-cm-roce-mode.sh
+
+       cat >"/etc/systemd/system/${RDMA_CM_SERVICE}" <<EOF_SERVICE
+[Unit]
+Description=Set CX3 Pro RDMA-CM default RoCE mode
+After=systemd-modules-load.service cx3pro-sriov-vfs.service
+Wants=cx3pro-sriov-vfs.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=RDMA_DEV=${rdma_dev}
+Environment=ROCE_MODE=RoCE v2
+ExecStart=/usr/local/sbin/cx3pro-set-rdma-cm-roce-mode.sh
+
+[Install]
+WantedBy=multi-user.target
+EOF_SERVICE
+
+       run systemctl daemon-reload
+       run systemctl enable "$RDMA_CM_SERVICE"
+}
+
 need_root
 
 echo "=== CX3 Pro RoCEv2 setup ==="
@@ -246,12 +313,18 @@ run ip addr replace "$VLAN20_IP" dev "$VLAN20_IF"
 if [ "$SET_CONFIGFS_ROCE_MODE" -eq 1 ]; then
        mount | grep -q ' /sys/kernel/config ' || mount -t configfs none /sys/kernel/config
        mkdir -p "/sys/kernel/config/rdma_cm/$RDMA_DEV"
-       if [ -f "/sys/kernel/config/rdma_cm/$RDMA_DEV/ports/1/default_roce_mode" ]; then
-               echo "RoCE v2" >"/sys/kernel/config/rdma_cm/$RDMA_DEV/ports/1/default_roce_mode"
-       else
-               echo "error: missing RDMA-CM default_roce_mode for $RDMA_DEV port 1" >&2
+       count=0
+       for mode_file in "/sys/kernel/config/rdma_cm/$RDMA_DEV"/ports/*/default_roce_mode; do
+               [ -f "$mode_file" ] || continue
+               echo "RoCE v2" >"$mode_file"
+               echo "${mode_file}=$(cat "$mode_file")"
+               count=$((count + 1))
+       done
+       if [ "$count" -eq 0 ]; then
+               echo "error: no RDMA-CM default_roce_mode files found for $RDMA_DEV" >&2
                exit 1
        fi
+       install_rdma_cm_roce_service "$RDMA_DEV"
 fi
 
 echo
