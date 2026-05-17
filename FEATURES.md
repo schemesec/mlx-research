@@ -135,3 +135,18 @@ The CRC mismatches are the harder part: they mean the public prototypes or
 types visible to module versioning do not match the stock Proxmox RDMA ABI.
 Adding wrappers only addresses the missing symbols; it does not make the
 existing mismatched symbols compatible.
+
+The same compatibility issue is not limited to NVMe/RDMA. A first pass with
+`audit-module-compat.sh` showed these stock Proxmox upper-layer modules also do
+not currently match the ported OFED core ABI:
+
+| Stock module | Total RDMA ABI conflicts | Missing OFED exports | CRC mismatches |
+| --- | ---: | ---: | ---: |
+| `ib_ipoib.ko` | 48 | 3 | 45 |
+| `ib_srp.ko` | 37 | 6 | 31 |
+| `ib_isert.ko` | 27 | 4 | 23 |
+| `rdma_rxe.ko` | 27 | 7 | 20 |
+
+This means the current port is closer to a replacement OFED RDMA stack than a
+drop-in Proxmox-compatible RDMA core. The desired direction is to reduce those
+ABI conflicts so stock surrounding modules can remain usable where possible.
