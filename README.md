@@ -108,6 +108,11 @@ The validated pvs3 outcome is:
 - bounded kernel warning scans have no `WARNING`, `Call Trace`,
   `Unknown symbol`, `disagrees`, `__warn`, fortify, or objtool entries.
 
+See [FEATURES.md](FEATURES.md) for the current feature-completeness status.
+The validated RoCEv2 PF/VF path is not yet the full OFED feature goal:
+NVMe/RDMA, IPoIB, several RDMA ULPs, and flow-steering/offload tuning still
+need matching ported modules or explicit validation.
+
 The installer builds with the retpoline-safe flags required by the Proxmox 7
 kernel, installs the known-good mlx4/RDMA module set into
 `/lib/modules/$(uname -r)/updates/mlnx-ofed-cx3`, disables the dummy

@@ -72,3 +72,15 @@ Cross-host VF RoCEv2 `ib_write_bw` test:
 - pvs1 client:
   `ib_write_bw -d mlx4_0 -i 1 -R -x 5 -F --report_gbits -s 65536 192.168.20.156`
 - Result: `49.65 Gb/sec` average.
+
+## Explicitly Not Validated
+
+The current tested state does not claim full MLNX_OFED feature parity. See
+`FEATURES.md` for the live feature inventory.
+
+Important known gap:
+
+- Stock Proxmox `nvme-rdma.ko` and `nvmet-rdma.ko` do not work with the ported
+  OFED RDMA core. A direct `modprobe` test produced real symbol-version and
+  missing-symbol failures. NVMe/RDMA requires matching OFED NVMe host/target
+  modules to be built and installed by this port.
