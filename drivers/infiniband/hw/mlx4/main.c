@@ -50,7 +50,9 @@
 
 #include <rdma/ib_smi.h>
 #include <rdma/ib_user_verbs.h>
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 #include <rdma/ib_user_verbs_exp.h>
+#endif
 #include <rdma/ib_addr.h>
 #include <rdma/ib_cache.h>
 

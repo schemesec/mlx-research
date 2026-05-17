@@ -132,6 +132,22 @@ shape is not "OFED mlx4_ib against stock mlx4_core"; it is the matched OFED
 ABI. The build mode therefore needs to force the matched OFED `linux/mlx4`
 headers while using stock `include/rdma` and `include/uapi/rdma`.
 
+Re-running the isolated `mlx4_ib` build with OFED mlx4 include ordering confirms
+that `mad.o` compiles. The next failures are real stock RDMA core API drift in
+`main.c`, mainly:
+
+- `ib_device_ops` callback signatures that changed from `u8` port numbers to
+  `u32` port numbers
+- stock `process_mad` signature differences
+- stock registration metadata living in `ib_device_ops` instead of direct
+  `struct ib_device` fields such as `owner`, `driver_id`, and `uverbs_abi_ver`
+- missing OFED-only `uverbs_ex_cmd_mask` and experimental userspace verbs fields
+- stock `ib_register_device()` requiring the DMA parent device argument
+
+These are compatibility adapter work items. They should be fixed by mapping the
+OFED mlx4 implementation onto the stock Proxmox RDMA API, not by suppressing
+warnings or disabling error paths.
+
 ## Next Implementation Direction
 
 Create a deliberate stock-RDMA-ABI build mode instead of continuing with ad hoc
