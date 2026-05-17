@@ -445,18 +445,6 @@ static void enum_netdev_ipv6_ips(struct ib_device *ib_dev,
 	list_for_each_entry_safe(sin6_iter, sin6_temp, &sin6_list, list) {
 		union ib_gid	gid;
 
-		/*
-		 * Default GIDs already cover Ethernet link-local addresses.
-		 * Avoid adding the same link-local GID again from IPv6 address
-		 * enumeration; CX3 firmware rejects that duplicate programming.
-		 */
-		if (ipv6_addr_type(&sin6_iter->sin6.sin6_addr) &
-		    IPV6_ADDR_LINKLOCAL) {
-			list_del(&sin6_iter->list);
-			kfree(sin6_iter);
-			continue;
-		}
-
 		rdma_ip2gid((struct sockaddr *)&sin6_iter->sin6, &gid);
 		update_gid(GID_ADD, ib_dev, port, &gid, &gid_attr);
 		list_del(&sin6_iter->list);
@@ -491,9 +479,6 @@ static void add_default_gids(struct ib_device *ib_dev, u8 port,
 {
 	struct net_device *event_ndev = cookie;
 	unsigned long gid_type_mask;
-
-	if (rdma_vlan_dev_real_dev(event_ndev))
-		return;
 
 	gid_type_mask = roce_gid_type_mask_support(ib_dev, port);
 	ib_cache_gid_set_default_gid(ib_dev, port, event_ndev, gid_type_mask,

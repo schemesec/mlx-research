@@ -550,6 +550,9 @@ static int __ib_cache_gid_add(struct ib_device *ib_dev, u8 port,
 	int ret = 0;
 	int empty;
 	int ix;
+	struct ib_gid_attr default_attr = {};
+	unsigned long default_mask = GID_ATTR_FIND_MASK_GID |
+				     GID_ATTR_FIND_MASK_GID_TYPE;
 
 	/* Do not allow adding zero GID in support of
 	 * IB spec version 1.3 section 4.1.1 point (6) and
@@ -561,6 +564,21 @@ static int __ib_cache_gid_add(struct ib_device *ib_dev, u8 port,
 	table = rdma_gid_table(ib_dev, port);
 
 	mutex_lock(&table->lock);
+
+	/*
+	 * Ethernet link-local GIDs are already represented by the reserved
+	 * default GID slots. On CX3, programming the same link-local GID again
+	 * as an IP-derived VLAN/upper-device entry is rejected by firmware.
+	 */
+	if (!default_gid &&
+	    (ipv6_addr_type((const struct in6_addr *)gid->raw) &
+	     IPV6_ADDR_LINKLOCAL)) {
+		default_attr.gid_type = attr->gid_type;
+		ix = find_gid(table, gid, &default_attr, true, default_mask,
+			      NULL);
+		if (ix >= 0)
+			goto out_unlock;
+	}
 
 	ix = find_gid(table, gid, attr, default_gid, mask, &empty);
 	if (ix >= 0)
@@ -1628,4 +1646,3 @@ bool rdma_check_gid_user_access(const struct ib_gid_attr *attr)
 	rcu_read_unlock();
 	return allow;
 }
-
