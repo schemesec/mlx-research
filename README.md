@@ -3,8 +3,10 @@
 ## Warning
 
 This repository was created with AI assistance for testing and research only.
-Do not use it on production systems or systems you cannot afford to reinstall
-or roll back.
+It was created specifically for my Proxmox/CX3 Pro homelab use case, and this
+port was used to extend the life of Mellanox CX3 Pro cards in that homelab. Do
+not use it on production systems or systems you cannot afford to reinstall or
+roll back.
 
 Port of the MLNX_OFED ConnectX-3/mlx4 driver stack for Proxmox VE 7 kernel
 `7.0.2-2-pve`.
