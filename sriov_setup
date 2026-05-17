@@ -137,7 +137,7 @@ fi
 echo
 echo "=== Loading VFIO modules ==="
 for module in vfio vfio_iommu_type1 vfio_pci; do
-       run modprobe "$module" || true
+       run modprobe "$module"
 done
 
 cat >/etc/modules-load.d/vfio.conf <<'MODS'
@@ -165,7 +165,7 @@ if [ "$ENABLE_IOMMU_GRUB" = "1" ]; then
        sed -i -E "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"$IOMMU_ARGS\"|" /etc/default/grub
        run update-grub
        if command -v proxmox-boot-tool >/dev/null 2>&1; then
-               proxmox-boot-tool refresh || true
+               run proxmox-boot-tool refresh
        fi
        echo "GRUB updated. Reboot required for IOMMU boot changes."
 else
@@ -189,7 +189,10 @@ if [ -z "$MST_DEV" ]; then
 fi
 
 echo "mst_dev=${MST_DEV}"
-MLXCFG="$(mlxconfig -d "$MST_DEV" q || true)"
+if ! MLXCFG="$(mlxconfig -d "$MST_DEV" q)"; then
+       echo "error: mlxconfig query failed for ${MST_DEV}" >&2
+       exit 1
+fi
 echo "$MLXCFG" | grep -E 'SRIOV_EN|NUM_OF_VFS' || true
 
 SRIOV_STATE="$(echo "$MLXCFG" | awk '/SRIOV_EN/ {print $2; exit}')"
@@ -285,7 +288,7 @@ echo "VF_VLAN=$VF_VLAN"
 echo "ASSIGN_VF_MACS=$ASSIGN_VF_MACS"
 echo "REPROBE_VFS=$REPROBE_VFS"
 
-modprobe mlx4_en || true
+modprobe mlx4_en
 
 for _ in $(seq 1 20); do
        ip link show "$PF" >/dev/null 2>&1 && break
@@ -303,7 +306,7 @@ for i in $(seq 0 $((NUM_VFS - 1))); do
        else
                ip link set "$PF" vf "$i" vlan "$VF_VLAN"
        fi
-       ip link set "$PF" vf "$i" spoofchk on || true
+       ip link set "$PF" vf "$i" spoofchk on
 done
 
 if [ "$REPROBE_VFS" = "1" ]; then

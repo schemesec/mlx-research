@@ -76,6 +76,11 @@ already assigned to guests and must not be rebound.
 the VLAN interfaces are persistent and visible to Proxmox networking tools. Set
 `PERSIST_INTERFACES=0` to only configure the live runtime interfaces.
 
+`rocesetup` may also set the RDMA-CM `default_roce_mode` through configfs during
+the current boot. That setting is runtime-only; the persistent default for this
+port is the mlx4 module option `ud_gid_type=2`, and `verify-pve7.sh` validates
+the actual RoCE v2 GID table rather than relying on configfs being mounted.
+
 Run the verifier after setup:
 
 ```bash
@@ -105,6 +110,11 @@ The installer builds with the retpoline-safe flags required by the Proxmox 7
 kernel, installs the known-good mlx4/RDMA module set into
 `/lib/modules/$(uname -r)/updates/mlnx-ofed-cx3`, disables the dummy
 `xprtrdma.ko` and `svcrdma.ko` module names if present, and runs `depmod`.
+
+Current limitation: this tree does not yet install a matching ported
+`ib_ipoib.ko`. `install-pve7.sh` therefore blocks the stock Proxmox `ib_ipoib`
+module from loading against the ported `ib_core`; remove that guard only after a
+matching `ib_ipoib.ko` is ported and installed.
 
 For a build-only validation run:
 
