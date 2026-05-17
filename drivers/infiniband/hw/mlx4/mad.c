@@ -2393,7 +2393,9 @@ int mlx4_ib_init_sriov(struct mlx4_ib_dev *dev)
 
 	dev->sriov.is_going_down = 0;
 	spin_lock_init(&dev->sriov.going_down_lock);
-	mlx4_ib_cm_paravirt_init(dev);
+	err = mlx4_ib_cm_paravirt_init(dev);
+	if (err)
+		return err;
 
 	mlx4_ib_warn(&dev->ib_dev, "multi-function enabled\n");
 

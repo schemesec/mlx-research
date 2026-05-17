@@ -295,7 +295,8 @@ static void schedule_delayed(struct ib_device *ibdev, struct id_map_entry *id)
 	/*make sure that there is no schedule inside the scheduled work.*/
 	if (!sriov->is_going_down) {
 		id->scheduled_delete = 1;
-		schedule_delayed_work(&id->timeout, CM_CLEANUP_CACHE_TIMEOUT);
+		queue_delayed_work(sriov->cm_wq, &id->timeout,
+				   CM_CLEANUP_CACHE_TIMEOUT);
 	}
 	spin_unlock_irqrestore(&sriov->going_down_lock, flags);
 	spin_unlock(&sriov->id_map_lock);
@@ -391,12 +392,18 @@ int mlx4_ib_demux_cm_handler(struct ib_device *ibdev, int port, int *slave,
 	return 0;
 }
 
-void mlx4_ib_cm_paravirt_init(struct mlx4_ib_dev *dev)
+int mlx4_ib_cm_paravirt_init(struct mlx4_ib_dev *dev)
 {
 	spin_lock_init(&dev->sriov.id_map_lock);
 	INIT_LIST_HEAD(&dev->sriov.cm_list);
 	dev->sriov.sl_id_map = RB_ROOT;
 	xa_init_flags(&dev->sriov.pv_id_table, XA_FLAGS_ALLOC);
+	dev->sriov.cm_wq = alloc_ordered_workqueue("mlx4_ib_cm",
+						   WQ_MEM_RECLAIM);
+	if (!dev->sriov.cm_wq)
+		return -ENOMEM;
+
+	return 0;
 }
 
 /* slave = -1 ==> all slaves */
@@ -422,7 +429,7 @@ void mlx4_ib_cm_paravirt_clean(struct mlx4_ib_dev *dev, int slave)
 	spin_unlock(&sriov->id_map_lock);
 
 	if (need_flush)
-		flush_scheduled_work(); /* make sure all timers were flushed */
+		flush_workqueue(sriov->cm_wq);
 
 	/* now, remove all leftover entries from databases*/
 	spin_lock(&sriov->id_map_lock);
@@ -465,5 +472,10 @@ void mlx4_ib_cm_paravirt_clean(struct mlx4_ib_dev *dev, int slave)
 	list_for_each_entry_safe(map, tmp_map, &lh, list) {
 		list_del(&map->list);
 		kfree(map);
+	}
+
+	if (slave < 0 && sriov->cm_wq) {
+		destroy_workqueue(sriov->cm_wq);
+		sriov->cm_wq = NULL;
 	}
 }

@@ -540,6 +540,7 @@ struct mlx4_ib_sriov {
 	spinlock_t id_map_lock;
 	struct rb_root sl_id_map;
 	struct list_head cm_list;
+	struct workqueue_struct *cm_wq;
 };
 
 struct gid_cache_context {
@@ -911,7 +912,7 @@ int mlx4_ib_demux_cm_handler(struct ib_device *ibdev, int port, int *slave,
 int mlx4_ib_multiplex_cm_handler(struct ib_device *ibdev, int port, int slave_id,
 		struct ib_mad *mad);
 
-void mlx4_ib_cm_paravirt_init(struct mlx4_ib_dev *dev);
+int mlx4_ib_cm_paravirt_init(struct mlx4_ib_dev *dev);
 void mlx4_ib_cm_paravirt_clean(struct mlx4_ib_dev *dev, int slave_id);
 
 /* alias guid support */
