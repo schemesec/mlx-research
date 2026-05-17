@@ -94,6 +94,38 @@ check_module_param() {
        fi
 }
 
+check_roce_v2_gid_for_netdev() {
+       local netdev="$1"
+       local found=0
+       local type_file
+       local idx
+       local type
+       local ndev
+       local gid
+       local base
+
+       for type_file in /sys/class/infiniband/*/ports/*/gid_attrs/types/*; do
+               [ -f "$type_file" ] || continue
+               idx="$(basename "$type_file")"
+               base="${type_file%/gid_attrs/types/*}"
+               type="$(cat "$type_file" 2>/dev/null || true)"
+               [ "$type" = "RoCE v2" ] || continue
+               ndev="$(cat "${base}/gid_attrs/ndevs/${idx}" 2>/dev/null || true)"
+               [ "$ndev" = "$netdev" ] || continue
+               gid="$(cat "${base}/gids/${idx}" 2>/dev/null || true)"
+               [ -n "$gid" ] || continue
+               [ "$gid" != "0000:0000:0000:0000:0000:0000:0000:0000" ] || continue
+               found=1
+               break
+       done
+
+       if [ "$found" -eq 1 ]; then
+               pass "$netdev has a nonzero RoCE v2 GID"
+       else
+               fail "$netdev does not have a nonzero RoCE v2 GID"
+       fi
+}
+
 section "host"
 hostname
 uname -r
@@ -125,20 +157,9 @@ done
 section "RoCE mode"
 check_module_param roce_mode "$ROCE_MODE"
 check_module_param ud_gid_type "$UD_GID_TYPE"
-
-for port in 1 2; do
-       roce_mode_file="/sys/kernel/config/rdma_cm/${RDMA_DEV}/ports/${port}/default_roce_mode"
-       if [ ! -f "$roce_mode_file" ]; then
-               fail "missing RDMA-CM default_roce_mode: $roce_mode_file"
-               continue
-       fi
-
-       if [ "$(cat "$roce_mode_file")" = "RoCE v2" ]; then
-               pass "$RDMA_DEV port $port RDMA-CM default_roce_mode=RoCE v2"
-       else
-               fail "$RDMA_DEV port $port RDMA-CM default_roce_mode is not RoCE v2"
-       fi
-done
+check_roce_v2_gid_for_netdev "$PF"
+check_roce_v2_gid_for_netdev "$VLAN10_IF"
+check_roce_v2_gid_for_netdev "$VLAN20_IF"
 
 section "firmware and RDMA devices"
 if ibv_devinfo -d rocep23s0 2>/dev/null | grep -q "fw_ver:[[:space:]]*${FW_PREFIX}"; then

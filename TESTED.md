@@ -28,7 +28,7 @@ Validated outcomes:
   - `num_vfs=8,0,0`
   - `probe_vf=8,0,0`
   - `port_type_array=2,2`
-- RDMA-CM `default_roce_mode` is `RoCE v2`.
+- PF and VLAN interfaces expose nonzero RoCE v2 GIDs.
 - Proxmox services remain active.
 - PF RDMA device `rocep23s0` is active.
 - VF RDMA devices `mlx4_1` through `mlx4_8` are present.

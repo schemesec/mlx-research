@@ -90,8 +90,8 @@ The validated pvs3 outcome is:
 - `mlx4_core`, `mlx4_en`, `mlx4_ib`, and RDMA core modules resolve to
   `/lib/modules/$(uname -r)/updates/mlnx-ofed-cx3`.
 - CX3 Pro firmware is `2.42.5x`.
-- mlx4 is configured as `roce_mode=2` so RoCE v1 and v2 GIDs are exposed, and
-  RDMA-CM `default_roce_mode` is set to `RoCE v2`.
+- mlx4 is configured as `roce_mode=2` and `ud_gid_type=2` so RoCE v2 GIDs are
+  exposed.
 - PF RoCE device `rocep23s0` is active.
 - 8 VF RDMA devices are present.
 - VF netdev MACs are stable after reboot.
