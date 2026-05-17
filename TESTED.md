@@ -8,7 +8,7 @@ only. Do not treat this as production-ready driver packaging.
 - Date checked: 2026-05-17
 - Host: `pvs3`
 - Kernel: `7.0.2-2-pve`
-- Repo commit: `410bb88`
+- Repo commit: `d15f8af`
 - CX3 Pro firmware: `2.42.5000`
 - PF: `enp23s0`
 - VFs: `8`
@@ -16,7 +16,9 @@ only. Do not treat this as production-ready driver packaging.
 - PF VLAN IPs:
   - `enp23s0.10`: `192.168.10.56/24`
   - `enp23s0.20`: `192.168.20.56/24`
-- Reboot persistence: verifier was run after reboot and reported passing.
+- Full rollback validation: repo was absent after rollback, then freshly cloned
+  and installed through `cx3pro-install`, `install-pve7.sh`, reboot,
+  `sriov_setup`, reboot, `rocesetup`, and `verify-pve7.sh`.
 
 Validated outcomes:
 
@@ -40,9 +42,10 @@ Validated outcomes:
   `BUG`, `Oops`, `WARNING`, `Call Trace`, `Unknown symbol`, `disagrees`,
   `__warn`, `fortify`, and `objtool`.
 
-Manual VF RoCEv2 test:
+Local VF RoCEv2 `ib_write_bw` test:
 
 - Temporary VF IP: `enp23s0v0 = 192.168.20.156/24`
-- Server: `ib_write_bw -d mlx4_1 -x 3`
-- Client: `ib_write_bw -d rocep23s0 -x 5 192.168.20.156`
-- Result: about `48.44 Gb/sec`
+- Server: `ib_write_bw -d mlx4_1 -i 1 -R -x 1 -F --report_gbits`
+- Client:
+  `ib_write_bw -d rocep23s0 -i 1 -R -x 5 -F --report_gbits 192.168.20.156`
+- Result: `48.35 Gb/sec` average.
