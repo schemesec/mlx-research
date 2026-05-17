@@ -102,6 +102,23 @@ type/prototype mismatches such as:
 Adding OFED compatibility headers fixes some old/new kernel API issues, but a
 simple include overlay is not enough. It creates other header-order problems.
 
+Replacing both `include/rdma` and `include/uapi/rdma` with the stock Proxmox
+header trees lets the OFED `mlx4_core` and `mlx4_en` objects compile and link in
+a throwaway tree, but the full top-level build still fails because it tries to
+compile OFED `ib_core` against stock RDMA headers. That is expected for Option
+B: the stock-RDMA build mode must avoid building OFED RDMA core.
+
+An isolated `mlx4_ib` build with `CONFIG_MLX4_IB_STOCK_RDMA_ABI=y` now gets past
+the first OFED experimental verbs include failure. The next known stock-RDMA ABI
+gaps are in `mlx4_ib.h`:
+
+- `struct ib_fmr` / `struct mlx4_fmr` assumptions
+- `IB_QP_CREATE_USE_GFP_NOIO`
+- `enum ib_qpg_type`
+
+Those are OFED-era interfaces that need to be gated, mapped to stock Proxmox
+equivalents, or removed from the stock-RDMA build mode.
+
 ## Next Implementation Direction
 
 Create a deliberate stock-RDMA-ABI build mode instead of continuing with ad hoc

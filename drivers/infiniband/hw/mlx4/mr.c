@@ -441,8 +441,10 @@ struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd,
 	u64 start = attr->start;
 	u64 virt_addr = attr->hca_va;
 
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	if (access_flags & IB_EXP_ACCESS_PHYSICAL_ADDR)
 		return mlx4_ib_phys_addr(pd, length, virt_addr, access_flags);
+#endif
 
 	mr = kzalloc(sizeof(*mr), GFP_KERNEL);
 	if (!mr)

@@ -1004,8 +1004,14 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 			goto err;
 		}
 
-		if  (is_exp)
+		if  (is_exp) {
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 			mlx4_ib_set_exp_qp_flags(qp, init_attr);
+#else
+			err = -EOPNOTSUPP;
+			goto err;
+#endif
+		}
 
 		if (src == MLX4_IB_RWQ_SRC) {
 			if (ucmd.wq.comp_mask || ucmd.wq.reserved[0] ||
@@ -1687,10 +1693,12 @@ struct ib_qp *mlx4_ib_create_qp(struct ib_pd *pd,
 	struct ib_qp *ibqp;
 	struct mlx4_ib_dev *dev = to_mdev(device);
 
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	if (init_attr->qp_type == IB_EXP_UD_RSS_TSS) {
 		init_attr->qp_type = IB_QPT_UD;
 		is_exp = 1;
 	}
+#endif
 
 	ibqp = _mlx4_ib_create_qp(pd, init_attr, udata, is_exp);
 
@@ -4362,7 +4370,9 @@ done:
 		qp->sq_signal_bits == cpu_to_be32(MLX4_WQE_CTRL_CQ_UPDATE) ?
 		IB_SIGNAL_ALL_WR : IB_SIGNAL_REQ_WR;
 
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	mlx4_ib_set_exp_attr_flags(qp, qp_init_attr);
+#endif
 out:
 	mutex_unlock(&qp->mutex);
 	return err;

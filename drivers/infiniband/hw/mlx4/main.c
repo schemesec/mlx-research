@@ -1187,11 +1187,13 @@ static void mlx4_ib_disassociate_ucontext(struct ib_ucontext *ibcontext)
 static int mlx4_ib_mmap(struct ib_ucontext *context, struct vm_area_struct *vma)
 {
 	struct mlx4_ib_dev *dev = to_mdev(context->device);
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	/* Last 8 bits hold the command others are data per that command */
 	unsigned long  command = vma->vm_pgoff & MLX4_IB_EXP_MMAP_CMD_MASK;
 
 	if (is_exp_contig_command(command))
 		return mlx4_ib_exp_contig_mmap(context, vma, command);
+#endif
 
 	switch (vma->vm_pgoff) {
 	case 0:
@@ -1230,6 +1232,7 @@ static int mlx4_ib_mmap(struct ib_ucontext *context, struct vm_area_struct *vma)
 	}
 
 	default:
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 		if (command == MLX4_IB_EXP_MMAP_EXT_UAR_PAGE) {
 			return mlx4_ib_exp_uar_mmap(context, vma, command);
 		} else if (command == MLX4_IB_EXP_MMAP_EXT_BLUE_FLAME_PAGE) {
@@ -1237,6 +1240,9 @@ static int mlx4_ib_mmap(struct ib_ucontext *context, struct vm_area_struct *vma)
 		} else {
 			return -EINVAL;
 		}
+#else
+		return -EINVAL;
+#endif
 	}
 }
 
@@ -2825,6 +2831,7 @@ static const struct ib_device_ops mlx4_ib_dev_ops = {
 	.req_notify_cq = mlx4_ib_arm_cq,
 	.rereg_user_mr = mlx4_ib_rereg_user_mr,
 	.resize_cq = mlx4_ib_resize_cq,
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	/* Add EXP verbs here to minimize conflicts via rebase */
 	.exp_modify_cq	= mlx4_ib_exp_modify_cq,
 	.exp_create_qp = mlx4_ib_exp_create_qp,
@@ -2832,6 +2839,7 @@ static const struct ib_device_ops mlx4_ib_dev_ops = {
 	.exp_ioctl         = mlx4_ib_exp_ioctl,
 #ifdef HAVE_MM_STRUCT_FREE_AREA_CACHE
 	.exp_get_unmapped_area = mlx4_ib_exp_get_unmapped_area,
+#endif
 #endif
 
 	INIT_RDMA_OBJ_SIZE(ib_ah, mlx4_ib_ah, ibah),
@@ -2973,6 +2981,7 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 		(1ull << IB_USER_VERBS_EX_CMD_CREATE_CQ) |
 		(1ull << IB_USER_VERBS_EX_CMD_CREATE_QP);
 
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	ibdev->ib_dev.uverbs_exp_cmd_mask =
 		(1ull << IB_USER_VERBS_EXP_CMD_CREATE_QP)	|
 		(1ull << IB_USER_VERBS_EXP_CMD_MODIFY_CQ)	|
@@ -2980,6 +2989,7 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 		(1ull << IB_USER_VERBS_EXP_CMD_CREATE_CQ)	|
 		(1ull << IB_USER_VERBS_EXP_CMD_MODIFY_QP)	|
 		(1ull << IB_USER_VERBS_EXP_CMD_CREATE_FLOW);
+#endif
 
 
 	if ((dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_RSS) &&

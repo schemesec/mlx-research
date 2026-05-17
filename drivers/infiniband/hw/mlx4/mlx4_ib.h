@@ -48,7 +48,9 @@
 #include <linux/mlx4/doorbell.h>
 #include <linux/mlx4/qp.h>
 #include <linux/mlx4/cq.h>
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 #include "mlx4_ib_exp.h"
+#endif
 
 #define MLX4_IB_DRV_NAME	"mlx4_ib"
 
