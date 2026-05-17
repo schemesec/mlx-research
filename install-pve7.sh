@@ -6,7 +6,7 @@ KVER="${KVER:-$(uname -r)}"
 JOBS="${JOBS:-$(nproc)}"
 INSTALL_DIR="${INSTALL_DIR:-/lib/modules/${KVER}/updates/mlnx-ofed-cx3}"
 MLNX_PYTHON="${MLNX_PYTHON:-}"
-MODULE_KCFLAGS="-mindirect-branch=keep -mfunction-return=keep"
+MODULE_KCFLAGS="${MODULE_KCFLAGS:-}"
 BACKUP_DIR="${BACKUP_DIR:-}"
 BUILD_ONLY=0
 NO_BUILD=0
