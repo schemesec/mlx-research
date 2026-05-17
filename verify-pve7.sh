@@ -6,7 +6,7 @@ NUM_VFS="${NUM_VFS:-8}"
 VF_VLAN="${VF_VLAN:-20}"
 ROCE_MODE="${ROCE_MODE:-2}"
 UD_GID_TYPE="${UD_GID_TYPE:-2}"
-RDMA_DEV="${RDMA_DEV:-rocep23s0}"
+RDMA_DEV="${RDMA_DEV:-}"
 INSTALL_DIR="${INSTALL_DIR:-/lib/modules/$(uname -r)/updates/mlnx-ofed-cx3}"
 FW_PREFIX="${FW_PREFIX:-2.42.5}"
 CHECK_VLAN_IPS="${CHECK_VLAN_IPS:-1}"
@@ -62,6 +62,41 @@ vf_netdev() {
        [ -e "$vf_link" ] || return 1
        vf_bdf="$(basename "$(readlink -f "$vf_link")")"
        ls "/sys/bus/pci/devices/${vf_bdf}/net" 2>/dev/null | head -1
+}
+
+vf_bdf() {
+       local idx="$1"
+       local vf_link="/sys/class/net/${PF}/device/virtfn${idx}"
+
+       [ -e "$vf_link" ] || return 1
+       basename "$(readlink -f "$vf_link")"
+}
+
+pci_driver() {
+       local bdf="$1"
+       local driver_link="/sys/bus/pci/devices/${bdf}/driver"
+
+       [ -e "$driver_link" ] || return 1
+       basename "$(readlink -f "$driver_link")"
+}
+
+rdma_dev_for_netdev() {
+       local netdev="$1"
+       local dev
+       local ndev_file
+
+       for dev in /sys/class/infiniband/*; do
+               [ -d "$dev" ] || continue
+               for ndev_file in "$dev"/ports/*/gid_attrs/ndevs/*; do
+                       [ -f "$ndev_file" ] || continue
+                       if [ "$(cat "$ndev_file" 2>/dev/null || true)" = "$netdev" ]; then
+                               basename "$dev"
+                               return 0
+                       fi
+               done
+       done
+
+       return 1
 }
 
 check_module_path() {
@@ -126,6 +161,8 @@ check_roce_v2_gid_for_netdev() {
        fi
 }
 
+RDMA_DEV="${RDMA_DEV:-$(rdma_dev_for_netdev "$PF" || true)}"
+
 section "host"
 hostname
 uname -r
@@ -162,31 +199,26 @@ check_roce_v2_gid_for_netdev "$VLAN10_IF"
 check_roce_v2_gid_for_netdev "$VLAN20_IF"
 
 section "firmware and RDMA devices"
-if ibv_devinfo -d rocep23s0 2>/dev/null | grep -q "fw_ver:[[:space:]]*${FW_PREFIX}"; then
-       pass "rocep23s0 firmware matches ${FW_PREFIX}x"
+if [ -z "$RDMA_DEV" ]; then
+       fail "could not find RDMA device for PF $PF"
+elif ibv_devinfo -d "$RDMA_DEV" 2>/dev/null | grep -q "fw_ver:[[:space:]]*${FW_PREFIX}"; then
+       pass "$RDMA_DEV firmware matches ${FW_PREFIX}x"
 else
-       fail "rocep23s0 firmware does not match ${FW_PREFIX}x"
-       ibv_devinfo -d rocep23s0 2>/dev/null | grep 'fw_ver:' || true
+       fail "$RDMA_DEV firmware does not match ${FW_PREFIX}x"
+       ibv_devinfo -d "$RDMA_DEV" 2>/dev/null | grep 'fw_ver:' || true
 fi
 
 ibv_devices_output="$(ibv_devices)"
 printf '%s\n' "$ibv_devices_output"
-if grep -qx rocep23s0 <<<"$(printf '%s\n' "$ibv_devices_output" | awk '{print $1}')"; then
-       pass "PF RDMA device rocep23s0 present"
+if [ -n "$RDMA_DEV" ] && grep -qx "$RDMA_DEV" <<<"$(printf '%s\n' "$ibv_devices_output" | awk '{print $1}')"; then
+       pass "PF RDMA device $RDMA_DEV present"
 else
-       fail "PF RDMA device rocep23s0 missing"
-fi
-
-vf_rdma_count="$(printf '%s\n' "$ibv_devices_output" | awk '$1 ~ /^mlx4_[0-9]+$/ {count++} END {print count + 0}')"
-if [ "$vf_rdma_count" -eq "$NUM_VFS" ]; then
-       pass "$NUM_VFS VF RDMA devices present"
-else
-       fail "expected $NUM_VFS VF RDMA devices, found $vf_rdma_count"
+       fail "PF RDMA device ${RDMA_DEV:-unknown} missing"
 fi
 
 rdma_link_output="$(rdma link show)"
 printf '%s\n' "$rdma_link_output"
-if grep -q "rocep23s0/1 state ACTIVE" <<<"$rdma_link_output"; then
+if [ -n "$RDMA_DEV" ] && grep -q "$RDMA_DEV/1 state ACTIVE" <<<"$rdma_link_output"; then
        pass "PF RDMA port is active"
 else
        fail "PF RDMA port is not active"
@@ -201,6 +233,9 @@ fi
 systemctl status cx3pro-sriov-vfs.service --no-pager --lines=20 || true
 
 section "VF MAC and VLAN"
+host_vfs=0
+passthrough_vfs=0
+
 if ! ip link show "$PF" >/dev/null 2>&1; then
        fail "PF netdev missing: $PF"
 else
@@ -209,9 +244,43 @@ else
 fi
 
 for i in $(seq 0 $((NUM_VFS - 1))); do
+       bdf="$(vf_bdf "$i" || true)"
+       driver=""
        vf="$(vf_netdev "$i" || true)"
        expected_mac="$(vf_mac_from_pf "$PF" "$i")"
        actual_mac=""
+
+       if [ -z "$bdf" ]; then
+               fail "vf $i PCI function missing"
+               continue
+       fi
+
+       driver="$(pci_driver "$bdf" || true)"
+
+       if ip -d link show "$PF" | grep -q "vf $i .*vlan $VF_VLAN"; then
+               pass "vf $i is assigned VLAN $VF_VLAN"
+       else
+               fail "vf $i is not assigned VLAN $VF_VLAN"
+       fi
+
+       if ip -d link show "$PF" | grep -q "vf $i .*link/ether $expected_mac"; then
+               pass "vf $i PF policy MAC is stable: $expected_mac"
+       else
+               fail "vf $i PF policy MAC mismatch: expected $expected_mac"
+       fi
+
+       if [ "$driver" = "vfio-pci" ]; then
+               passthrough_vfs=$((passthrough_vfs + 1))
+               pass "vf $i $bdf is assigned to vfio-pci passthrough"
+               continue
+       fi
+
+       if [ "$driver" != "mlx4_core" ]; then
+               fail "vf $i $bdf unexpected driver: ${driver:-none}"
+               continue
+       fi
+
+       host_vfs=$((host_vfs + 1))
 
        if [ -z "$vf" ]; then
                fail "vf $i netdev missing"
@@ -228,12 +297,14 @@ for i in $(seq 0 $((NUM_VFS - 1))); do
                fail "$vf MAC mismatch: expected $expected_mac, got ${actual_mac:-missing}"
        fi
 
-       if ip -d link show "$PF" | grep -q "vf $i .*vlan $VF_VLAN"; then
-               pass "$vf is assigned VLAN $VF_VLAN"
-       else
-               fail "$vf is not assigned VLAN $VF_VLAN"
-       fi
+       check_roce_v2_gid_for_netdev "$vf"
 done
+
+if [ $((host_vfs + passthrough_vfs)) -eq "$NUM_VFS" ]; then
+       pass "$NUM_VFS VFs accounted for: $host_vfs host-owned, $passthrough_vfs passthrough"
+else
+       fail "VF accounting mismatch: expected $NUM_VFS, got $host_vfs host-owned and $passthrough_vfs passthrough"
+fi
 
 section "PF VLAN interfaces"
 for netdev in "$PF" "$VLAN10_IF" "$VLAN20_IF"; do

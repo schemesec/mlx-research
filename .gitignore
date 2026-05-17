@@ -46,6 +46,7 @@ modules.builtin
 /System.map
 /Module.markers
 /Module.symvers
+Module.symvers
 bp2/
 
 #

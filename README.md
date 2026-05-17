@@ -92,8 +92,9 @@ The validated pvs3 outcome is:
 - CX3 Pro firmware is `2.42.5x`.
 - mlx4 is configured as `roce_mode=2` and `ud_gid_type=2` so RoCE v2 GIDs are
   exposed.
-- PF RoCE device `rocep23s0` is active.
-- 8 VF RDMA devices are present.
+- PF RoCE device is active.
+- VFs are either host-owned with a host RDMA device, or assigned to `vfio-pci`
+  for VM passthrough.
 - VF netdev MACs are stable after reboot.
 - all VFs are assigned VLAN 20.
 - `enp23s0.10` and `enp23s0.20` have the configured IPs.
