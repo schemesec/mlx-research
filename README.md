@@ -61,12 +61,16 @@ reboot
 ```
 
 By default, `sriov_setup` assigns stable locally administered VF MAC addresses
-derived from the PF MAC and sets each VF to VLAN 20. To provide explicit MACs,
-pass a comma-separated list:
+derived from the PF MAC, sets each VF to VLAN 20, and rebinds the PF-owned VF
+PCI functions so the VF netdevs pick up those stable MAC addresses. To provide
+explicit MACs, pass a comma-separated list:
 
 ```bash
 VF_MACS=02:9a:0a:d0:90:00,02:9a:0a:d0:90:01 ./sriov_setup
 ```
+
+Set `REPROBE_VFS=0` only when running the helper on a live host where VFs are
+already assigned to guests and must not be rebound.
 
 After the SR-IOV reboot, configure PF VLAN interfaces for RoCEv2 testing and
 print the dynamic RoCEv2 GID indices to use with perftest:

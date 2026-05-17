@@ -14,6 +14,7 @@ UD_GID_TYPE="${UD_GID_TYPE:-1}"
 MLX4_CONF="${MLX4_CONF:-/etc/modprobe.d/mlx4.conf}"
 ASSIGN_VF_MACS="${ASSIGN_VF_MACS:-1}"
 VF_MACS="${VF_MACS:-}"
+REPROBE_VFS="${REPROBE_VFS:-1}"
 
 usage() {
        cat <<EOF
@@ -37,6 +38,7 @@ Environment:
   UD_GID_TYPE=...       mlx4 ud_gid_type value. Default: 1.
   ASSIGN_VF_MACS=0|1    Assign stable VF MACs. Default: 1.
   VF_MACS=...           Optional comma-separated VF MAC list.
+  REPROBE_VFS=0|1        Rebind VFs after MAC/VLAN assignment. Default: 1.
 EOF
 }
 
@@ -115,6 +117,7 @@ echo "fw_num_of_vfs=${FW_NUM_OF_VFS}"
 echo "enable_iommu_grub=${ENABLE_IOMMU_GRUB}"
 echo "acs_override=${ACS_OVERRIDE}"
 echo "assign_vf_macs=${ASSIGN_VF_MACS}"
+echo "reprobe_vfs=${REPROBE_VFS}"
 echo
 
 if [ "$INSTALL_PACKAGES" -eq 1 ]; then
@@ -231,6 +234,7 @@ NUM_VFS="${NUM_VFS:-8}"
 VF_VLAN="${VF_VLAN:-20}"
 ASSIGN_VF_MACS="${ASSIGN_VF_MACS:-1}"
 VF_MACS="${VF_MACS:-}"
+REPROBE_VFS="${REPROBE_VFS:-1}"
 
 vf_mac_from_pf() {
        local pf="$1"
@@ -250,11 +254,36 @@ vf_mac_from_list() {
        printf '%s\n' "$VF_MACS" | tr ',' '\n' | awk -v n="$((idx + 1))" 'NR == n {gsub(/^[ \t]+|[ \t]+$/, ""); print; exit}'
 }
 
+vf_bdf() {
+       local idx="$1"
+       local vf_link="/sys/class/net/${PF}/device/virtfn${idx}"
+
+       [ -e "$vf_link" ] || return 1
+       basename "$(readlink -f "$vf_link")"
+}
+
+reprobe_vf() {
+       local bdf="$1"
+       local dev="/sys/bus/pci/devices/${bdf}"
+       local driver_path
+       local driver
+
+       [ -e "$dev" ] || return 0
+       [ -e "${dev}/driver" ] || return 0
+
+       driver_path="$(readlink -f "${dev}/driver")"
+       driver="$(basename "$driver_path")"
+       echo "Reprobing VF ${bdf} with driver ${driver}"
+       printf '%s\n' "$bdf" >"${driver_path}/unbind"
+       printf '%s\n' "$bdf" >"/sys/bus/pci/drivers/${driver}/bind"
+}
+
 echo "Applying VF VLANs"
 echo "PF=$PF"
 echo "NUM_VFS=$NUM_VFS"
 echo "VF_VLAN=$VF_VLAN"
 echo "ASSIGN_VF_MACS=$ASSIGN_VF_MACS"
+echo "REPROBE_VFS=$REPROBE_VFS"
 
 modprobe mlx4_en || true
 
@@ -276,6 +305,14 @@ for i in $(seq 0 $((NUM_VFS - 1))); do
        fi
        ip link set "$PF" vf "$i" spoofchk on || true
 done
+
+if [ "$REPROBE_VFS" = "1" ]; then
+       for i in $(seq 0 $((NUM_VFS - 1))); do
+               bdf="$(vf_bdf "$i" || true)"
+               [ -n "$bdf" ] || continue
+               reprobe_vf "$bdf"
+       done
+fi
 
 ip link show dev "$PF"
 lspci -D | grep -i mellanox || true
@@ -300,6 +337,7 @@ Environment=NUM_VFS=${NUM_VFS}
 Environment=VF_VLAN=${VF_VLAN}
 Environment=ASSIGN_VF_MACS=${ASSIGN_VF_MACS}
 Environment=VF_MACS=${VF_MACS}
+Environment=REPROBE_VFS=${REPROBE_VFS}
 ExecStart=/usr/local/sbin/cx3pro-apply-vf-vlans.sh
 
 [Install]
