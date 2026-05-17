@@ -78,9 +78,10 @@ override WITH_MAKE_PARAMS += CONFIG_OBJTOOL=
 # not defined: we test there if it is empty
 export CFLAGS_RETPOLINE
 
-CPP_MAJOR := $(shell $(CPP) -dumpversion 2>&1 | cut -d'.' -f1)
-CPP_MINOR := $(shell $(CPP) -dumpversion 2>&1 | cut -d'.' -f2)
-CPP_PATCH := $(shell $(CPP) -dumpversion 2>&1 | cut -d'.' -f3)
+CPP_VERSION := $(shell $(CC) -dumpfullversion -dumpversion 2>&1)
+CPP_MAJOR := $(shell echo $(CPP_VERSION) | cut -d'.' -f1)
+CPP_MINOR := $(shell echo $(CPP_VERSION) | cut -d'.' -f2)
+CPP_PATCH := $(shell echo $(CPP_VERSION) | cut -d'.' -f3)
 # Assumes that major, minor, and patch cannot exceed 999
 CPP_VERS  := $(shell expr 0$(CPP_MAJOR) \* 1000000 + 0$(CPP_MINOR) \* 1000 + 0$(CPP_PATCH))
 
@@ -97,9 +98,10 @@ export MLNX_CFLAGS
 #
 compile_h=$(shell /bin/ls -1 $(KSRC_OBJ)/include/*/compile.h 2> /dev/null | head -1)
 ifneq ($(compile_h),)
-KERNEL_GCC_MAJOR := $(shell grep LINUX_COMPILER $(compile_h) | sed -r -e 's/.*gcc version ([0-9\.\-]*) .*/\1/g' | cut -d'.' -f1)
-KERNEL_GCC_MINOR := $(shell grep LINUX_COMPILER $(compile_h) | sed -r -e 's/.*gcc version ([0-9\.\-]*) .*/\1/g' | cut -d'.' -f2)
-KERNEL_GCC_PATCH := $(shell grep LINUX_COMPILER $(compile_h) | sed -r -e 's/.*gcc version ([0-9\.\-]*) .*/\1/g' | cut -d'.' -f3)
+KERNEL_GCC_VERSION := $(shell sed -n -r 's/.*gcc[^0-9]*([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' $(compile_h) | head -1)
+KERNEL_GCC_MAJOR := $(shell echo $(KERNEL_GCC_VERSION) | cut -d'.' -f1)
+KERNEL_GCC_MINOR := $(shell echo $(KERNEL_GCC_VERSION) | cut -d'.' -f2)
+KERNEL_GCC_PATCH := $(shell echo $(KERNEL_GCC_VERSION) | cut -d'.' -f3)
 KERNEL_GCC_VER  := $(shell expr 0$(KERNEL_GCC_MAJOR) \* 1000000 + 0$(KERNEL_GCC_MINOR) \* 1000 + 0$(KERNEL_GCC_PATCH))
 ifneq ($(shell if [ $(CPP_VERS) -lt 4006000 ] && [ $(KERNEL_GCC_VER) -ge 4006000 ]; then \
 					echo "YES"; else echo ""; fi),)
