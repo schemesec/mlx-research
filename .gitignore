@@ -18,6 +18,7 @@
 *.ko.unsigned
 *.so
 *.so.dbg
+*.mod
 *.mod.c
 *.i
 *.lst

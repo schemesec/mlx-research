@@ -28,36 +28,36 @@ git clone https://github.com/schemesec/mlx-research.git
 cd mlx-research
 ```
 
-Install MST/MFT tooling and check the CX3 Pro firmware. By default this checks
-the current and candidate firmware versions/PSIDs but does not flash firmware:
+Run the setup in this order from a fresh install or rollback.
+
+1. Install MST/MFT tooling and check the CX3 Pro firmware. By default this
+   checks the current and candidate firmware versions/PSIDs but does not flash
+   firmware:
 
 ```bash
 ./cx3pro-install
 ```
 
-Then build and install the ported mlx4/RDMA kernel modules:
+2. Build and install the ported mlx4/RDMA kernel modules, then reboot:
 
 ```bash
 ./install-pve7.sh
 reboot
 ```
 
-After reboot, verify the OFED modules are being used:
-
-```bash
-modprobe --show-depends mlx4_core
-modprobe --show-depends xprtrdma
-modprobe --show-depends ib_iser
-journalctl -k -b -g 'BUG|Oops|WARNING|Call Trace|mlx4|rpcrdma|svc_rdma|sysctl table check failed' --no-pager
-systemctl is-active pveproxy pvedaemon pvestatd pve-cluster pve-firewall
-```
-
-Configure SR-IOV boot parameters and VF VLAN setup. This does not reboot unless
-`--auto-reboot` is passed:
+3. Configure SR-IOV boot parameters and the VF VLAN/MAC service, then reboot.
+   This does not reboot unless `--auto-reboot` is passed:
 
 ```bash
 PF=enp23s0 NUM_VFS=8 VF_VLAN=20 ./sriov_setup
 reboot
+```
+
+4. Configure PF VLAN interfaces for RoCEv2 testing. Replace these IPs for hosts
+   other than pvs3:
+
+```bash
+VLAN10_IP=192.168.10.56/24 VLAN20_IP=192.168.20.56/24 ./rocesetup
 ```
 
 By default, `sriov_setup` assigns stable locally administered VF MAC addresses
@@ -72,16 +72,31 @@ VF_MACS=02:9a:0a:d0:90:00,02:9a:0a:d0:90:01 ./sriov_setup
 Set `REPROBE_VFS=0` only when running the helper on a live host where VFs are
 already assigned to guests and must not be rebound.
 
-After the SR-IOV reboot, configure PF VLAN interfaces for RoCEv2 testing and
-print the dynamic RoCEv2 GID indices to use with perftest:
-
-```bash
-VLAN10_IP=192.168.10.56/24 VLAN20_IP=192.168.20.56/24 ./rocesetup
-```
-
 `rocesetup` writes a marked block into `/etc/network/interfaces` by default so
 the VLAN interfaces are persistent and visible to Proxmox networking tools. Set
 `PERSIST_INTERFACES=0` to only configure the live runtime interfaces.
+
+Run the verifier after setup:
+
+```bash
+PF=enp23s0 NUM_VFS=8 VF_VLAN=20 \
+VLAN10_IP=192.168.10.56/24 VLAN20_IP=192.168.20.56/24 \
+./verify-pve7.sh
+```
+
+The validated pvs3 outcome is:
+
+- Proxmox services stay active.
+- `mlx4_core`, `mlx4_en`, `mlx4_ib`, and RDMA core modules resolve to
+  `/lib/modules/$(uname -r)/updates/mlnx-ofed-cx3`.
+- CX3 Pro firmware is `2.42.5x`.
+- PF RoCE device `rocep23s0` is active.
+- 8 VF RDMA devices are present.
+- VF netdev MACs are stable after reboot.
+- all VFs are assigned VLAN 20.
+- `enp23s0.10` and `enp23s0.20` have the configured IPs.
+- bounded kernel warning scans have no `WARNING`, `Call Trace`,
+  `Unknown symbol`, `disagrees`, `__warn`, fortify, or objtool entries.
 
 The installer builds with the retpoline-safe flags required by the Proxmox 7
 kernel, installs the known-good mlx4/RDMA module set into
