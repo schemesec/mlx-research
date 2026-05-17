@@ -245,9 +245,12 @@ run ip addr replace "$VLAN20_IP" dev "$VLAN20_IF"
 
 if [ "$SET_CONFIGFS_ROCE_MODE" -eq 1 ]; then
        mount | grep -q ' /sys/kernel/config ' || mount -t configfs none /sys/kernel/config
-       mkdir -p "/sys/kernel/config/rdma_cm/$RDMA_DEV" || true
+       mkdir -p "/sys/kernel/config/rdma_cm/$RDMA_DEV"
        if [ -f "/sys/kernel/config/rdma_cm/$RDMA_DEV/ports/1/default_roce_mode" ]; then
-               echo "RoCE v2" >"/sys/kernel/config/rdma_cm/$RDMA_DEV/ports/1/default_roce_mode" || true
+               echo "RoCE v2" >"/sys/kernel/config/rdma_cm/$RDMA_DEV/ports/1/default_roce_mode"
+       else
+               echo "error: missing RDMA-CM default_roce_mode for $RDMA_DEV port 1" >&2
+               exit 1
        fi
 fi
 

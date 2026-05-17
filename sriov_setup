@@ -10,7 +10,7 @@ ACS_OVERRIDE="${ACS_OVERRIDE:-0}"
 AUTO_REBOOT="${AUTO_REBOOT:-0}"
 INSTALL_PACKAGES="${INSTALL_PACKAGES:-0}"
 ROCE_MODE="${ROCE_MODE:-2}"
-UD_GID_TYPE="${UD_GID_TYPE:-1}"
+UD_GID_TYPE="${UD_GID_TYPE:-2}"
 MLX4_CONF="${MLX4_CONF:-/etc/modprobe.d/mlx4.conf}"
 ASSIGN_VF_MACS="${ASSIGN_VF_MACS:-1}"
 VF_MACS="${VF_MACS:-}"
@@ -35,7 +35,7 @@ Environment:
   VF_VLAN=...           VLAN assigned to each VF. Default: 20.
   FW_NUM_OF_VFS=...     Firmware NUM_OF_VFS target. Default: 32.
   ROCE_MODE=...         mlx4 roce_mode value. Default: 2.
-  UD_GID_TYPE=...       mlx4 ud_gid_type value. Default: 1.
+  UD_GID_TYPE=...       mlx4 ud_gid_type value. Default: 2.
   ASSIGN_VF_MACS=0|1    Assign stable VF MACs. Default: 1.
   VF_MACS=...           Optional comma-separated VF MAC list.
   REPROBE_VFS=0|1        Rebind VFs after MAC/VLAN assignment. Default: 1.
