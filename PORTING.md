@@ -206,6 +206,13 @@ throwaway build tree, overlays stock Proxmox RDMA headers, preserves the matched
 OFED mlx4 headers, and builds the stock-RDMA mlx4 module set without installing
 anything.
 
+`install-stock-rdma-pve7.sh` is the first install wrapper for that direction. It
+uses the same probe build output, installs only `mlx_compat`, `mlx4_core`,
+`mlx4_en`, and `mlx4_ib` into a separate stock-RDMA update directory, moves the
+current full-OFED install directory out of the module search path if present,
+and removes the old replacement-stack `ib_ipoib` blacklist. It then checks
+module resolution for `mlx4_*`, `ib_ipoib`, `nvme-rdma`, and `nvmet-rdma`.
+
 This is still only a build probe. It has not been installed or boot-tested in
 the stock-RDMA architecture, and RSS/QP-group experimental verbs are currently
 not wired into the stock-RDMA object model.

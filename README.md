@@ -131,3 +131,33 @@ For a build-only validation run:
 ```bash
 ./install-pve7.sh --build-only
 ```
+
+## Experimental Stock-RDMA ABI Path
+
+The default installer above is the validated replacement-stack path. It works
+for the tested PF/VF RoCEv2 cases, but stock Proxmox upper modules such as
+`ib_ipoib`, `nvme-rdma`, and `nvmet-rdma` do not match the ported OFED RDMA
+core.
+
+The stock-RDMA path is the compatibility-first experiment: keep stock Proxmox
+RDMA core and upper modules, and install only `mlx_compat`, `mlx4_core`,
+`mlx4_en`, and `mlx4_ib` built against the stock RDMA ABI.
+
+Build-only probe:
+
+```bash
+./build-stock-rdma-probe.sh
+```
+
+Experimental install:
+
+```bash
+./install-stock-rdma-pve7.sh
+reboot
+```
+
+That installer moves the full-OFED install directory out of the module search
+path if present, removes the old `ib_ipoib` blacklist written by the
+replacement-stack installer, and checks that stock `ib_ipoib`, `nvme-rdma`, and
+`nvmet-rdma` can resolve. It has been build-tested only; it has not yet been
+boot-tested as the active pvs3 driver path.
