@@ -106,7 +106,11 @@ MODULE_PARM_DESC(en_ecn, "Enable q/ecn [enable = 1, disable = 0 (default)]");
 #define unregister_netdevice_notifier           unregister_netdevice_notifier_rh
 #endif
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+static const bool roce_v1_noncompat_gid = true;
+#else
 extern bool roce_v1_noncompat_gid;
+#endif
 enum {
 	MAX_NUM_STR_BITMAP = 1 << 15,
 	DEFAULT_TBL_VAL = -1

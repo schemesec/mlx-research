@@ -185,9 +185,26 @@ those blockers in the throwaway probe tree:
   `ib_sa_guid_info_rec_query()` signature
 
 With those local changes copied into `/tmp/mlx-research-stock-rdma3` on pvs3,
-the isolated stock-RDMA `mlx4_ib.ko` build completed. The remaining output from
-that probe was non-fatal `ecn.c` missing-prototype warnings plus the expected
-BTF skip because the Proxmox header package does not provide `vmlinux`.
+the isolated stock-RDMA `mlx4_ib.ko` build completed. A follow-up clean probe in
+`/tmp/mlx-research-stock-rdma4` then built the matched driver family:
+
+- `mlx_compat.ko`
+- `mlx4_core.ko`
+- `mlx4_en.ko`
+- `mlx4_ib.ko` with `CONFIG_MLX4_IB_STOCK_RDMA_ABI=y`
+
+The matched-family build requires `mlx_compat.ko` because the OFED backport
+headers intentionally add a module dependency through
+`backport_dependency_symbol`. It also requires `CONFIG_COMPAT_EN_SYSFS=y` so
+`mlx4_en` links the sysfs implementation that its source references. The
+remaining output from that probe was non-fatal missing-prototype / indentation
+warnings plus the expected BTF skip because the Proxmox header package does not
+provide `vmlinux`.
+
+The manual probe has been captured as `build-stock-rdma-probe.sh`. It creates a
+throwaway build tree, overlays stock Proxmox RDMA headers, preserves the matched
+OFED mlx4 headers, and builds the stock-RDMA mlx4 module set without installing
+anything.
 
 This is still only a build probe. It has not been installed or boot-tested in
 the stock-RDMA architecture, and RSS/QP-group experimental verbs are currently
@@ -204,8 +221,8 @@ That build mode should:
 2. Use OFED `linux/mlx4` headers for the matched OFED mlx4 family.
 3. Use stock Proxmox `include/rdma/*` headers for `mlx4_ib` so the module is
    built against the stock RDMA ABI.
-4. Build `mlx4_core`, `mlx4_en`, and `mlx4_ib` together.
-5. Install only the mlx4 family at first, leaving stock `ib_core`, `rdma_cm`,
+4. Build `mlx_compat`, `mlx4_core`, `mlx4_en`, and `mlx4_ib` together.
+5. Install only that mlx4/backport set at first, leaving stock `ib_core`, `rdma_cm`,
    `ib_uverbs`, and upper-layer modules in place.
 6. Test whether stock `nvme-rdma`, `nvmet-rdma`, `ib_ipoib`, and other upper
    modules load without ABI conflicts.
