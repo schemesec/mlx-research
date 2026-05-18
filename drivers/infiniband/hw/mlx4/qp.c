@@ -882,6 +882,75 @@ void mlx4_ib_release_wqn(struct mlx4_ib_ucontext *context,
 	mutex_unlock(&context->wqn_ranges_mutex);
 }
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+static int mlx4_ib_alloc_qpn_common(struct mlx4_ib_dev *dev,
+				    struct mlx4_ib_qp *qp,
+				    struct ib_qp_init_attr *attr,
+				    int *qpn, int is_exp)
+{
+	if (is_exp)
+		return -EOPNOTSUPP;
+
+	if (attr->qp_type == IB_QPT_RAW_PACKET)
+		return mlx4_qp_reserve_range(dev->dev, 1, 1, qpn,
+					     (attr->cap.max_send_wr ?
+					      MLX4_RESERVE_ETH_BF_QP : 0) |
+					     (attr->cap.max_recv_wr ?
+					      MLX4_RESERVE_A0_QP : 0),
+					     qp->mqp.usage);
+
+	if (qp->flags & MLX4_IB_QP_NETIF)
+		return mlx4_ib_steer_qp_alloc(dev, 1, qpn);
+
+	return mlx4_qp_reserve_range(dev->dev, 1, 1, qpn, 0,
+				     qp->mqp.usage);
+}
+
+static void mlx4_ib_unalloc_qpn_common(struct mlx4_ib_dev *dev,
+				       struct mlx4_ib_qp *qp, int qpn,
+				       struct mlx4_ib_ucontext *context,
+				       enum mlx4_ib_source_type src,
+				       bool dirty_release)
+{
+	if (qp->flags & MLX4_IB_QP_NETIF)
+		mlx4_ib_steer_qp_free(dev, qpn, 1);
+	else if (src == MLX4_IB_RWQ_SRC)
+		mlx4_ib_release_wqn(context, qp, dirty_release);
+	else
+		mlx4_qp_release_range(dev->dev, qpn, 1);
+}
+
+static void mlx4_ib_release_qpn_common(struct mlx4_ib_dev *dev,
+				       struct mlx4_ib_qp *qp,
+				       struct mlx4_ib_ucontext *context,
+				       enum mlx4_ib_source_type src,
+				       bool dirty_release)
+{
+	mlx4_ib_unalloc_qpn_common(dev, qp, qp->mqp.qpn, context, src,
+				   dirty_release);
+}
+
+static int mlx4_ib_check_qpg_attr(struct ib_pd *pd,
+				  struct ib_qp_init_attr *init_attr)
+{
+	return 0;
+}
+
+static int mlx4_ib_set_qp_user_uar(struct ib_pd *pd, struct mlx4_ib_qp *qp,
+				   struct ib_udata *udata, int is_exp)
+{
+	struct mlx4_ib_ucontext *mcontext;
+
+	if (is_exp)
+		return -EOPNOTSUPP;
+
+	mcontext = rdma_udata_to_drv_context(udata, struct mlx4_ib_ucontext,
+					     ibucontext);
+	qp->uar = &mcontext->uar;
+	return 0;
+}
+#endif
+
 static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 			    enum mlx4_ib_source_type src,
 			    struct ib_qp_init_attr *init_attr,
@@ -1069,17 +1138,32 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 		}
 
 		qp->umem =
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+			ib_umem_get(pd->device,
+				    (src == MLX4_IB_QP_SRC) ? ucmd.qp.buf_addr :
+							      ucmd.wq.buf_addr,
+				    qp->buf_size, 0);
+#else
 			ib_umem_get(udata,
 				    (src == MLX4_IB_QP_SRC) ? ucmd.qp.buf_addr :
 							      ucmd.wq.buf_addr,
 				    qp->buf_size, 0, 0, IB_PEER_MEM_ALLOW);
+#endif
 		if (IS_ERR(qp->umem)) {
 			err = PTR_ERR(qp->umem);
 			goto err;
 		}
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+		shift = mlx4_ib_umem_calc_optimal_mtt_size(qp->umem, 0, &n);
+		if (shift < 0) {
+			err = shift;
+			goto err_buf;
+		}
+#else
 		n = ib_umem_page_count(qp->umem);
 		shift = mlx4_ib_umem_calc_optimal_mtt_size(qp->umem, 0, &n);
+#endif
 		err = mlx4_mtt_init(dev->dev, n, shift, &qp->mtt);
 
 		if (err)
@@ -1527,6 +1611,7 @@ static u32 get_sqp_num(struct mlx4_ib_dev *dev, struct ib_qp_init_attr *attr)
 		return dev->dev->caps.spec_qps[attr->port_num - 1].qp1_proxy;
 }
 
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 static struct ib_qp *_mlx4_ib_create_qp(struct ib_pd *pd,
 					struct ib_qp_init_attr *init_attr,
 					struct ib_udata *udata,
@@ -1730,6 +1815,159 @@ struct ib_qp *mlx4_ib_create_qp(struct ib_pd *pd,
 	}
 	return ibqp;
 }
+#else
+static int _mlx4_ib_create_qp(struct ib_pd *pd, struct mlx4_ib_qp *qp,
+			      struct ib_qp_init_attr *init_attr,
+			      struct ib_udata *udata)
+{
+	int err;
+	int sup_u_create_flags = MLX4_IB_QP_BLOCK_MULTICAST_LOOPBACK;
+	u16 xrcdn = 0;
+
+	if (init_attr->rwq_ind_tbl)
+		return -EOPNOTSUPP;
+
+	if (init_attr->create_flags & ~(MLX4_IB_QP_LSO |
+					MLX4_IB_QP_BLOCK_MULTICAST_LOOPBACK |
+					MLX4_IB_SRIOV_TUNNEL_QP |
+					MLX4_IB_SRIOV_SQP |
+					MLX4_IB_QP_NETIF |
+					MLX4_IB_QP_CREATE_ROCE_V2_GSI))
+		return -EOPNOTSUPP;
+
+	if (init_attr->create_flags & IB_QP_CREATE_NETIF_QP) {
+		if (init_attr->qp_type != IB_QPT_UD)
+			return -EINVAL;
+	}
+
+	if (init_attr->create_flags) {
+		if (udata && init_attr->create_flags & ~(sup_u_create_flags))
+			return -EINVAL;
+
+		if ((init_attr->create_flags & ~(MLX4_IB_SRIOV_SQP |
+						 MLX4_IB_QP_CREATE_ROCE_V2_GSI |
+						 MLX4_IB_QP_BLOCK_MULTICAST_LOOPBACK) &&
+		     init_attr->qp_type != IB_QPT_UD) ||
+		    (init_attr->create_flags & MLX4_IB_SRIOV_SQP &&
+		     init_attr->qp_type > IB_QPT_GSI) ||
+		    (init_attr->create_flags & MLX4_IB_QP_CREATE_ROCE_V2_GSI &&
+		     init_attr->qp_type != IB_QPT_GSI))
+			return -EINVAL;
+	}
+
+	switch (init_attr->qp_type) {
+	case IB_QPT_XRC_TGT:
+		pd = to_mxrcd(init_attr->xrcd)->pd;
+		xrcdn = to_mxrcd(init_attr->xrcd)->xrcdn;
+		init_attr->send_cq = to_mxrcd(init_attr->xrcd)->cq;
+		/* fall through */
+	case IB_QPT_XRC_INI:
+		if (!(to_mdev(pd->device)->dev->caps.flags & MLX4_DEV_CAP_FLAG_XRC))
+			return -ENOSYS;
+		init_attr->recv_cq = init_attr->send_cq;
+		/* fall through */
+	case IB_QPT_RC:
+	case IB_QPT_UC:
+	case IB_QPT_RAW_PACKET:
+	case IB_QPT_UD:
+		qp->pri.vid = 0xFFFF;
+		qp->alt.vid = 0xFFFF;
+		err = create_qp_common(to_mdev(pd->device), pd, MLX4_IB_QP_SRC,
+#ifdef HAVE_MEMALLOC_NOIO_SAVE
+				       init_attr, udata, 0, &qp, 0);
+#else
+				       init_attr, udata, 0, &qp, GFP_KERNEL, 0);
+#endif
+		if (err)
+			return err;
+
+		qp->ibqp.qp_num = qp->mqp.qpn;
+		qp->xrcdn = xrcdn;
+		break;
+	case IB_QPT_SMI:
+	case IB_QPT_GSI:
+	{
+		int sqpn;
+
+		if (udata)
+			return -EINVAL;
+
+		if (init_attr->create_flags & MLX4_IB_QP_CREATE_ROCE_V2_GSI) {
+			int res = mlx4_qp_reserve_range(to_mdev(pd->device)->dev,
+							1, 1, &sqpn, 0,
+							MLX4_RES_USAGE_DRIVER);
+
+			if (res)
+				return res;
+		} else {
+			sqpn = get_sqp_num(to_mdev(pd->device), init_attr);
+		}
+
+		qp->pri.vid = 0xFFFF;
+		qp->alt.vid = 0xFFFF;
+		err = create_qp_common(to_mdev(pd->device), pd, MLX4_IB_QP_SRC,
+#ifdef HAVE_MEMALLOC_NOIO_SAVE
+				       init_attr, udata, sqpn, &qp, 0);
+#else
+				       init_attr, udata, sqpn, &qp, GFP_KERNEL, 0);
+#endif
+		if (err)
+			return err;
+
+		qp->port = init_attr->port_num;
+		qp->ibqp.qp_num = init_attr->qp_type == IB_QPT_SMI ? 0 :
+			init_attr->create_flags & MLX4_IB_QP_CREATE_ROCE_V2_GSI ?
+			sqpn : 1;
+		break;
+	}
+	default:
+		return -EOPNOTSUPP;
+	}
+
+	return 0;
+}
+
+int mlx4_ib_create_qp(struct ib_qp *ibqp, struct ib_qp_init_attr *init_attr,
+		      struct ib_udata *udata)
+{
+	struct mlx4_ib_dev *dev = to_mdev(ibqp->device);
+	struct mlx4_ib_qp *qp = to_mqp(ibqp);
+	struct ib_pd *pd = ibqp->pd;
+	int ret;
+
+	mutex_init(&qp->mutex);
+	ret = _mlx4_ib_create_qp(pd, qp, init_attr, udata);
+	if (ret)
+		return ret;
+
+	if (!mlx4_is_slave(dev->dev) &&
+	    init_attr->qp_type == IB_QPT_GSI &&
+	    !(init_attr->create_flags & MLX4_IB_QP_CREATE_ROCE_V2_GSI)) {
+		struct mlx4_ib_sqp *sqp = to_msqp(qp);
+		int is_eth = rdma_cap_eth_ah(&dev->ib_dev, init_attr->port_num);
+
+		if (is_eth &&
+		    ((dev->dev->caps.roce_mode == MLX4_ROCE_MODE_1_PLUS_2) ||
+		     dev->dev->caps.roce_mode == MLX4_ROCE_MODE_2)) {
+			init_attr->create_flags |= MLX4_IB_QP_CREATE_ROCE_V2_GSI;
+			sqp->roce_v2_gsi = ib_create_qp(pd, init_attr);
+
+			if (IS_ERR(sqp->roce_v2_gsi)) {
+				pr_err("Failed to create GSI QP for RoCEv2 (%ld)\n",
+				       PTR_ERR(sqp->roce_v2_gsi));
+				sqp->roce_v2_gsi = NULL;
+			} else {
+				to_mqp(sqp->roce_v2_gsi)->flags |=
+					MLX4_IB_ROCE_V2_GSI_QP;
+			}
+
+			init_attr->create_flags &= ~MLX4_IB_QP_CREATE_ROCE_V2_GSI;
+		}
+	}
+
+	return 0;
+}
+#endif
 
 static int _mlx4_ib_destroy_qp(struct ib_qp *qp, struct ib_udata *udata)
 {
@@ -2623,8 +2861,10 @@ static int __mlx4_ib_modify_qp(void *src, enum mlx4_ib_source_type src_type,
 	    new_state == IB_QPS_INIT)
 		context->rlkey_roce_mode |= (1 << 4);
 
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	if ((attr_mask & IB_QP_GROUP_RSS) && (qp->qpg_data->rss_child_count > 1))
 		mlx4_ib_modify_qp_rss(dev, qp, context);
+#endif
 
 	/*
 	 * Before passing a kernel QP to the HW, make sure that the
@@ -2864,9 +3104,11 @@ static int _mlx4_ib_modify_qp(struct ib_qp *ibqp, struct ib_qp_attr *attr,
 			    (ibqp->qp_type == IB_QPT_UC) ||
 			    (ibqp->qp_type == IB_QPT_RAW_PACKET) ||
 			    (ibqp->qp_type == IB_QPT_XRC_INI)) {
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 				if (attr_mask & IB_QP_FLOW_ENTROPY)
 					attr->port_num =  (attr->flow_entropy % dev->num_ports) + 1;
 				else
+#endif
 					attr->port_num = mlx4_ib_bond_next_port(dev);
 			}
 		} else {
@@ -4603,12 +4845,22 @@ int mlx4_ib_destroy_wq(struct ib_wq *ibwq, struct ib_udata *udata)
 	return 0;
 }
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+int mlx4_ib_create_rwq_ind_table(struct ib_rwq_ind_table *rwq_ind_table,
+				 struct ib_rwq_ind_table_init_attr *init_attr,
+				 struct ib_udata *udata)
+#else
 struct ib_rwq_ind_table
 *mlx4_ib_create_rwq_ind_table(struct ib_device *device,
 			      struct ib_rwq_ind_table_init_attr *init_attr,
 			      struct ib_udata *udata)
+#endif
 {
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	struct ib_device *device = rwq_ind_table->device;
+#else
 	struct ib_rwq_ind_table *rwq_ind_table;
+#endif
 	struct mlx4_ib_create_rwq_ind_tbl_resp resp = {};
 	unsigned int ind_tbl_size = 1 << init_attr->log_ind_tbl_size;
 	unsigned int base_wqn;
@@ -4619,18 +4871,30 @@ struct ib_rwq_ind_table
 	if (udata->inlen > 0 &&
 	    !ib_is_udata_cleared(udata, 0,
 				 udata->inlen))
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+		return -EOPNOTSUPP;
+#else
 		return ERR_PTR(-EOPNOTSUPP);
+#endif
 
 	min_resp_len = offsetof(typeof(resp), reserved) + sizeof(resp.reserved);
 	if (udata->outlen && udata->outlen < min_resp_len)
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+		return -EINVAL;
+#else
 		return ERR_PTR(-EINVAL);
+#endif
 
 	if (ind_tbl_size >
 	    device->attrs.rss_caps.max_rwq_indirection_table_size) {
 		pr_debug("log_ind_tbl_size = %d is bigger than supported = %d\n",
 			 ind_tbl_size,
 			 device->attrs.rss_caps.max_rwq_indirection_table_size);
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+		return -EINVAL;
+#else
 		return ERR_PTR(-EINVAL);
+#endif
 	}
 
 	base_wqn = init_attr->ind_tbl[0]->wq_num;
@@ -4638,38 +4902,58 @@ struct ib_rwq_ind_table
 	if (base_wqn % ind_tbl_size) {
 		pr_debug("WQN=0x%x isn't aligned with indirection table size\n",
 			 base_wqn);
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+		return -EINVAL;
+#else
 		return ERR_PTR(-EINVAL);
+#endif
 	}
 
 	for (i = 1; i < ind_tbl_size; i++) {
 		if (++base_wqn != init_attr->ind_tbl[i]->wq_num) {
 			pr_debug("indirection table's WQNs aren't consecutive\n");
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+			return -EINVAL;
+#else
 			return ERR_PTR(-EINVAL);
+#endif
 		}
 	}
 
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	rwq_ind_table = kzalloc(sizeof(*rwq_ind_table), GFP_KERNEL);
 	if (!rwq_ind_table)
 		return ERR_PTR(-ENOMEM);
+#endif
 
 	if (udata->outlen) {
 		resp.response_length = offsetof(typeof(resp), response_length) +
 					sizeof(resp.response_length);
 		err = ib_copy_to_udata(udata, &resp, resp.response_length);
 		if (err)
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+			return err;
+#else
 			goto err;
+#endif
 	}
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	return 0;
+#else
 	return rwq_ind_table;
 
 err:
 	kfree(rwq_ind_table);
 	return ERR_PTR(err);
+#endif
 }
 
 int mlx4_ib_destroy_rwq_ind_table(struct ib_rwq_ind_table *ib_rwq_ind_tbl)
 {
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	kfree(ib_rwq_ind_tbl);
+#endif
 	return 0;
 }
 

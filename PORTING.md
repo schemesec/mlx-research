@@ -170,6 +170,29 @@ remaining compile blockers are concentrated in:
 - stock core-owned object allocation for RWQ indirection tables and XRCDs
 - `create_flow` signature drift
 
+The next stock-RDMA adapter pass moved the isolated `mlx4_ib` build through
+those blockers in the throwaway probe tree:
+
+- flow steering creation now maps the OFED fields/domains onto the stock RDMA
+  flow API where the public structures differ
+- hardware stats allocation now uses stock `alloc_hw_device_stats` /
+  `alloc_hw_port_stats` and `struct rdma_stat_desc`
+- MAD, memory region, memory window, XRCD, RWQ indirection table, SRQ, and QP
+  callbacks now have stock-RDMA signatures under `CONFIG_MLX4_IB_STOCK_RDMA_ABI`
+- user memory pinning paths use the stock `ib_umem_get()` /
+  `ib_umem_num_dma_blocks()` API in stock-RDMA mode
+- the SA alias GUID query call is mapped to the stock
+  `ib_sa_guid_info_rec_query()` signature
+
+With those local changes copied into `/tmp/mlx-research-stock-rdma3` on pvs3,
+the isolated stock-RDMA `mlx4_ib.ko` build completed. The remaining output from
+that probe was non-fatal `ecn.c` missing-prototype warnings plus the expected
+BTF skip because the Proxmox header package does not provide `vmlinux`.
+
+This is still only a build probe. It has not been installed or boot-tested in
+the stock-RDMA architecture, and RSS/QP-group experimental verbs are currently
+not wired into the stock-RDMA object model.
+
 ## Next Implementation Direction
 
 Create a deliberate stock-RDMA-ABI build mode instead of continuing with ad hoc

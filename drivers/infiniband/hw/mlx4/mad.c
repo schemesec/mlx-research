@@ -1083,20 +1083,31 @@ static int iboe_process_mad(struct ib_device *ibdev, int mad_flags, u8 port_num,
 	return err;
 }
 
-int mlx4_ib_process_mad(struct ib_device *ibdev, int mad_flags, u8 port_num,
+int mlx4_ib_process_mad(struct ib_device *ibdev, int mad_flags,
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+			u32 port_num,
+			const struct ib_wc *in_wc, const struct ib_grh *in_grh,
+			const struct ib_mad *in_mad, struct ib_mad *out_mad,
+#else
+			u8 port_num,
 			const struct ib_wc *in_wc, const struct ib_grh *in_grh,
 			const struct ib_mad_hdr *in, size_t in_mad_size,
-			struct ib_mad_hdr *out, size_t *out_mad_size,
-			u16 *out_mad_pkey_index)
+			struct ib_mad_hdr *out,
+#endif
+			size_t *out_mad_size, u16 *out_mad_pkey_index)
 {
 	struct mlx4_ib_dev *dev = to_mdev(ibdev);
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	const struct ib_mad *in_mad = (const struct ib_mad *)in;
 	struct ib_mad *out_mad = (struct ib_mad *)out;
+#endif
 	enum rdma_link_layer link = rdma_port_get_link_layer(ibdev, port_num);
 
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	if (WARN_ON_ONCE(in_mad_size != sizeof(*in_mad) ||
 			 *out_mad_size != sizeof(*out_mad)))
 		return IB_MAD_RESULT_FAILURE;
+#endif
 
 	/* iboe_process_mad() which uses the HCA flow-counters to implement IB PMA
 	 * queries, should be called only by VFs and for that specific purpose

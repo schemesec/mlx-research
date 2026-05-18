@@ -33,6 +33,9 @@
 
 #include <linux/slab.h>
 #include <rdma/ib_user_verbs.h>
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+#include <rdma/ib_umem.h>
+#endif
 
 #include "mlx4_ib.h"
 
@@ -182,6 +185,21 @@ static int mlx4_ib_umem_calc_block_mtt(u64 next_block_start,
 int mlx4_ib_umem_write_mtt(struct mlx4_ib_dev *dev, struct mlx4_mtt *mtt,
 			   struct ib_umem *umem)
 {
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	struct ib_block_iter biter;
+	u64 addr;
+	int err;
+	int i = 0;
+
+	rdma_umem_for_each_dma_block(umem, &biter, BIT(mtt->page_shift)) {
+		addr = rdma_block_iter_dma_address(&biter);
+		err = mlx4_write_mtt(dev->dev, mtt, i++, 1, &addr);
+		if (err)
+			return err;
+	}
+
+	return 0;
+#else
 	u64 *pages;
 	u64 len = 0;
 	int err = 0;
@@ -243,6 +261,7 @@ int mlx4_ib_umem_write_mtt(struct mlx4_ib_dev *dev, struct mlx4_mtt *mtt,
 out:
 	free_page((unsigned long) pages);
 	return err;
+#endif
 }
 
 /*
@@ -257,6 +276,10 @@ out:
 int mlx4_ib_umem_calc_optimal_mtt_size(struct ib_umem *umem, u64 start_va,
 				       int *num_of_mtts)
 {
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	*num_of_mtts = ib_umem_num_dma_blocks(umem, PAGE_SIZE);
+	return PAGE_SHIFT;
+#else
 	u64 block_shift = MLX4_MAX_MTT_SHIFT;
 	u64 min_shift = umem->page_shift;
 	u64 last_block_aligned_end = 0;
@@ -365,11 +388,17 @@ end:
 		block_shift = min_shift;
 	}
 	return block_shift;
+#endif
 }
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+static struct ib_umem *mlx4_get_umem_mr(struct ib_device *device, u64 start,
+					u64 length, int access_flags)
+#else
 static struct ib_umem *mlx4_get_umem_mr(struct ib_udata *udata, u64 start,
 					u64 length, u64 virt_addr,
 					int access_flags, unsigned long peer_mem_flags)
+#endif
 {
 	/*
 	 * Force registering the memory as writable if the underlying pages
@@ -380,7 +409,11 @@ static struct ib_umem *mlx4_get_umem_mr(struct ib_udata *udata, u64 start,
 	if (!ib_access_writable(access_flags)) {
 		struct vm_area_struct *vma;
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+		mmap_read_lock(current->mm);
+#else
 		down_read(&current->mm->mmap_sem);
+#endif
 		/*
 		 * FIXME: Ideally this would iterate over all the vmas that
 		 * cover the memory, but for now it requires a single vma to
@@ -395,12 +428,21 @@ static struct ib_umem *mlx4_get_umem_mr(struct ib_udata *udata, u64 start,
 			access_flags |= IB_ACCESS_LOCAL_WRITE;
 		}
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+		mmap_read_unlock(current->mm);
+#else
 		up_read(&current->mm->mmap_sem);
+#endif
 	}
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	return ib_umem_get(device, start, length, access_flags);
+#else
 	return ib_umem_get(udata, start, length, access_flags, 0, peer_mem_flags);
+#endif
 }
 
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 static void mlx4_invalidate_umem(void *invalidation_cookie,
 				 struct ib_umem *umem,
 				 unsigned long addr, size_t size)
@@ -425,9 +467,15 @@ static void mlx4_invalidate_umem(void *invalidation_cookie,
 	ib_umem_release(umem);
 	complete(&mr->invalidation_comp);
 }
+#endif
 
 struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd,
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+				  u64 start, u64 length, u64 virt_addr,
+				  int access_flags, struct ib_dmah *dmah,
+#else
 				  struct ib_mr_init_attr *attr,
+#endif
 				  struct ib_udata *udata)
 {
 	struct mlx4_ib_dev *dev = to_mdev(pd->device);
@@ -435,11 +483,18 @@ struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd,
 	int shift;
 	int err;
 	int n;
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	struct ib_peer_memory_client *ib_peer_mem;
 	int access_flags = attr->access_flags;
 	u64 length = attr->length;
 	u64 start = attr->start;
 	u64 virt_addr = attr->hca_va;
+#endif
+
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	if (dmah)
+		return ERR_PTR(-EOPNOTSUPP);
+#endif
 
 #ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	if (access_flags & IB_EXP_ACCESS_PHYSICAL_ADDR)
@@ -450,14 +505,19 @@ struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd,
 	if (!mr)
 		return ERR_PTR(-ENOMEM);
 
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	mutex_init(&mr->lock);
 	mr->umem =
 		mlx4_get_umem_mr(udata, start, length, virt_addr, access_flags, IB_PEER_MEM_ALLOW | IB_PEER_MEM_INVAL_SUPP);
+#else
+	mr->umem = mlx4_get_umem_mr(pd->device, start, length, access_flags);
+#endif
 	if (IS_ERR(mr->umem)) {
 		err = PTR_ERR(mr->umem);
 		goto err_free;
 	}
 
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	ib_peer_mem = mr->umem->ib_peer_mem;
 	if (ib_peer_mem) {
 		err = ib_umem_activate_invalidation_notifier(mr->umem, mlx4_invalidate_umem, mr);
@@ -468,7 +528,9 @@ struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd,
 	mutex_lock(&mr->lock);
 	if (atomic_read(&mr->invalidated))
 		goto err_locked_umem;
+#endif
 
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	if (ib_peer_mem) {
 		if (access_flags & IB_ACCESS_MW_BIND) {
 			/* Prevent binding MW on peer clients, mlx4_invalidate_umem is a void
@@ -481,14 +543,27 @@ struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd,
 		}
 		init_completion(&mr->invalidation_comp);
 	}
+#endif
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	shift = mlx4_ib_umem_calc_optimal_mtt_size(mr->umem, start, &n);
+	if (shift < 0) {
+		err = shift;
+		goto err_umem;
+	}
+#else
 	n = ib_umem_page_count(mr->umem);
 	shift = mlx4_ib_umem_calc_optimal_mtt_size(mr->umem, start, &n);
+#endif
 
 	err = mlx4_mr_alloc(dev->dev, to_mpd(pd)->pdn, virt_addr, length,
 			    convert_access(access_flags), n, shift, &mr->mmr);
 	if (err)
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+		goto err_umem;
+#else
 		goto err_locked_umem;
+#endif
 
 	err = mlx4_ib_umem_write_mtt(dev, &mr->mmr.mtt, mr->umem);
 	if (err)
@@ -499,18 +574,24 @@ struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd,
 		goto err_mr;
 
 	mr->ibmr.rkey = mr->ibmr.lkey = mr->mmr.key;
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	mr->ibmr.length = length;
 	mr->ibmr.iova = virt_addr;
+#endif
 	mr->ibmr.page_size = 1U << shift;
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	mr->live = 1;
 	mutex_unlock(&mr->lock);
+#endif
 	return &mr->ibmr;
 
 err_mr:
 	(void) mlx4_mr_free(to_mdev(pd->device)->dev, &mr->mmr);
 
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 err_locked_umem:
 	mutex_unlock(&mr->lock);
+#endif
 
 err_umem:
 	ib_umem_release(mr->umem);
@@ -521,7 +602,11 @@ err_free:
 	return ERR_PTR(err);
 }
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+struct ib_mr *mlx4_ib_rereg_user_mr(struct ib_mr *mr, int flags,
+#else
 int mlx4_ib_rereg_user_mr(struct ib_mr *mr, int flags,
+#endif
 			  u64 start, u64 length, u64 virt_addr,
 			  int mr_access_flags, struct ib_pd *pd,
 			  struct ib_udata *udata)
@@ -533,8 +618,10 @@ int mlx4_ib_rereg_user_mr(struct ib_mr *mr, int flags,
 	int err;
 
 	/* Peer memory isn't supported */
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	 if (mmr->umem->ib_peer_mem)
 		return -ENOTSUPP;
+#endif
 
 	/* Since we synchronize this call and mlx4_ib_dereg_mr via uverbs,
 	 * we assume that the calls can't run concurrently. Otherwise, a
@@ -543,7 +630,11 @@ int mlx4_ib_rereg_user_mr(struct ib_mr *mr, int flags,
 	err =  mlx4_mr_hw_get_mpt(dev->dev, &mmr->mmr, &pmpt_entry);
 
 	if (err)
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+		return ERR_PTR(err);
+#else
 		return err;
+#endif
 
 	if (flags & IB_MR_REREG_PD) {
 		err = mlx4_mr_hw_change_pd(dev->dev, *pmpt_entry,
@@ -573,16 +664,26 @@ int mlx4_ib_rereg_user_mr(struct ib_mr *mr, int flags,
 
 		mlx4_mr_rereg_mem_cleanup(dev->dev, &mmr->mmr);
 		ib_umem_release(mmr->umem);
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+		mmr->umem = mlx4_get_umem_mr(mr->device, start, length,
+					     mr_access_flags);
+#else
 		mmr->umem = mlx4_get_umem_mr(udata, start, length, virt_addr,
 					     mr_access_flags, 0);
+#endif
 		if (IS_ERR(mmr->umem)) {
 			err = PTR_ERR(mmr->umem);
 			/* Prevent mlx4_ib_dereg_mr from free'ing invalid pointer */
 			mmr->umem = NULL;
 			goto release_mpt_entry;
 		}
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+		n = ib_umem_num_dma_blocks(mmr->umem, PAGE_SIZE);
+		shift = PAGE_SHIFT;
+#else
 		n = ib_umem_page_count(mmr->umem);
 		shift = mmr->umem->page_shift;
+#endif
 
 		err = mlx4_mr_rereg_mem_write(dev->dev, &mmr->mmr,
 					      virt_addr, length, n, shift,
@@ -612,7 +713,13 @@ int mlx4_ib_rereg_user_mr(struct ib_mr *mr, int flags,
 release_mpt_entry:
 	mlx4_mr_hw_put_mpt(dev->dev, pmpt_entry);
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	if (err)
+		return ERR_PTR(err);
+	return NULL;
+#else
 	return err;
+#endif
 }
 
 static int
@@ -670,10 +777,12 @@ int mlx4_ib_dereg_mr(struct ib_mr *ibmr, struct ib_udata *udata)
 
 	mlx4_free_priv_pages(mr);
 
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	if (atomic_inc_return(&mr->invalidated) > 1) {
 		wait_for_completion(&mr->invalidation_comp);
 		goto end;
 	}
+#endif
 
 	ret = mlx4_mr_free(to_mdev(ibmr->device)->dev, &mr->mmr);
 	if (ret) {
@@ -681,32 +790,54 @@ int mlx4_ib_dereg_mr(struct ib_mr *ibmr, struct ib_udata *udata)
 		 * are bound to MR which is not supported with
 		 * peer memory clients.
 		*/
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 		atomic_set(&mr->invalidated, 0);
+#endif
 		return ret;
 	}
 	if (mr->umem)
 		ib_umem_release(mr->umem);
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 end:
+#endif
 	kfree(mr);
 
 	return 0;
 }
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+int mlx4_ib_alloc_mw(struct ib_mw *ibmw, struct ib_udata *udata)
+#else
 struct ib_mw *mlx4_ib_alloc_mw(struct ib_pd *pd, enum ib_mw_type type,
 			       struct ib_udata *udata)
+#endif
 {
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	struct ib_pd *pd = ibmw->pd;
+	enum ib_mw_type type = ibmw->type;
+#endif
 	struct mlx4_ib_dev *dev = to_mdev(pd->device);
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	struct mlx4_ib_mw *mw;
+#else
+	struct mlx4_ib_mw *mw = to_mmw(ibmw);
+#endif
 	int err;
 
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	mw = kmalloc(sizeof(*mw), GFP_KERNEL);
 	if (!mw)
 		return ERR_PTR(-ENOMEM);
+#endif
 
 	err = mlx4_mw_alloc(dev->dev, to_mpd(pd)->pdn,
 			    to_mlx4_type(type), &mw->mmw);
 	if (err)
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+		return err;
+#else
 		goto err_free;
+#endif
 
 	err = mlx4_mw_enable(dev->dev, &mw->mmw);
 	if (err)
@@ -714,15 +845,23 @@ struct ib_mw *mlx4_ib_alloc_mw(struct ib_pd *pd, enum ib_mw_type type,
 
 	mw->ibmw.rkey = mw->mmw.key;
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	return 0;
+#else
 	return &mw->ibmw;
+#endif
 
 err_mw:
 	mlx4_mw_free(dev->dev, &mw->mmw);
 
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 err_free:
 	kfree(mw);
 
 	return ERR_PTR(err);
+#else
+	return err;
+#endif
 }
 
 int mlx4_ib_dealloc_mw(struct ib_mw *ibmw)

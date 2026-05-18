@@ -884,11 +884,18 @@ int mlx4_ib_post_recv(struct ib_qp *ibqp, const struct ib_recv_wr *wr,
 int mlx4_MAD_IFC(struct mlx4_ib_dev *dev, int mad_ifc_flags,
 		 int port, const struct ib_wc *in_wc, const struct ib_grh *in_grh,
 		 const void *in_mad, void *response_mad);
-int mlx4_ib_process_mad(struct ib_device *ibdev, int mad_flags,	u8 port_num,
+int mlx4_ib_process_mad(struct ib_device *ibdev, int mad_flags,
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+			u32 port_num,
+			const struct ib_wc *in_wc, const struct ib_grh *in_grh,
+			const struct ib_mad *in, struct ib_mad *out,
+#else
+			u8 port_num,
 			const struct ib_wc *in_wc, const struct ib_grh *in_grh,
 			const struct ib_mad_hdr *in, size_t in_mad_size,
-			struct ib_mad_hdr *out, size_t *out_mad_size,
-			u16 *out_mad_pkey_index);
+			struct ib_mad_hdr *out,
+#endif
+			size_t *out_mad_size, u16 *out_mad_pkey_index);
 int mlx4_ib_mad_init(struct mlx4_ib_dev *dev);
 void mlx4_ib_mad_cleanup(struct mlx4_ib_dev *dev);
 
@@ -993,10 +1000,14 @@ int mlx4_ib_steer_qp_alloc(struct mlx4_ib_dev *dev, int count, int *qpn);
 void mlx4_ib_steer_qp_free(struct mlx4_ib_dev *dev, u32 qpn, int count);
 int mlx4_ib_steer_qp_reg(struct mlx4_ib_dev *mdev, struct mlx4_ib_qp *mqp,
 			 int is_attach);
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+struct ib_mr *mlx4_ib_rereg_user_mr(struct ib_mr *mr, int flags,
+#else
 int mlx4_ib_rereg_user_mr(struct ib_mr *mr, int flags,
-			  u64 start, u64 length, u64 virt_addr,
-			  int mr_access_flags, struct ib_pd *pd,
-			  struct ib_udata *udata);
+#endif
+			   u64 start, u64 length, u64 virt_addr,
+			   int mr_access_flags, struct ib_pd *pd,
+			   struct ib_udata *udata);
 int mlx4_ib_gid_index_to_real_index(struct mlx4_ib_dev *ibdev,
 				    const struct ib_gid_attr *attr);
 
@@ -1012,10 +1023,16 @@ int mlx4_ib_destroy_wq(struct ib_wq *wq, struct ib_udata *udata);
 int mlx4_ib_modify_wq(struct ib_wq *wq, struct ib_wq_attr *wq_attr,
 		      u32 wq_attr_mask, struct ib_udata *udata);
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+int mlx4_ib_create_rwq_ind_table(struct ib_rwq_ind_table *rwq_ind_table,
+				 struct ib_rwq_ind_table_init_attr *init_attr,
+				 struct ib_udata *udata);
+#else
 struct ib_rwq_ind_table
 *mlx4_ib_create_rwq_ind_table(struct ib_device *device,
 			      struct ib_rwq_ind_table_init_attr *init_attr,
 			      struct ib_udata *udata);
+#endif
 int mlx4_ib_destroy_rwq_ind_table(struct ib_rwq_ind_table *wq_ind_table);
 int mlx4_ib_umem_calc_optimal_mtt_size(struct ib_umem *umem, u64 start_va,
 				       int *num_of_mtts);

@@ -1311,46 +1311,83 @@ static int mlx4_ib_dealloc_pd(struct ib_pd *pd, struct ib_udata *udata)
 	return 0;
 }
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+static int mlx4_ib_alloc_xrcd(struct ib_xrcd *ibxrcd, struct ib_udata *udata)
+#else
 static struct ib_xrcd *mlx4_ib_alloc_xrcd(struct ib_device *ibdev,
 					  struct ib_udata *udata)
+#endif
 {
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	struct mlx4_ib_dev *dev = to_mdev(ibxrcd->device);
+	struct mlx4_ib_xrcd *xrcd = to_mxrcd(ibxrcd);
+#else
 	struct mlx4_ib_xrcd *xrcd;
+#endif
 	struct ib_cq_init_attr cq_attr = {};
 	int err;
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	if (!(dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_XRC))
+		return -EOPNOTSUPP;
+#else
 	if (!(to_mdev(ibdev)->dev->caps.flags & MLX4_DEV_CAP_FLAG_XRC))
 		return ERR_PTR(-ENOSYS);
 
 	xrcd = kmalloc(sizeof *xrcd, GFP_KERNEL);
 	if (!xrcd)
 		return ERR_PTR(-ENOMEM);
+#endif
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	err = mlx4_xrcd_alloc(dev->dev, &xrcd->xrcdn);
+	if (err)
+		return err;
+#else
 	err = mlx4_xrcd_alloc(to_mdev(ibdev)->dev, &xrcd->xrcdn);
 	if (err)
 		goto err1;
+#endif
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	xrcd->pd = ib_alloc_pd(ibxrcd->device, 0);
+#else
 	xrcd->pd = ib_alloc_pd(ibdev, 0);
+#endif
 	if (IS_ERR(xrcd->pd)) {
 		err = PTR_ERR(xrcd->pd);
 		goto err2;
 	}
 
 	cq_attr.cqe = 1;
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	xrcd->cq = ib_create_cq(ibxrcd->device, NULL, NULL, xrcd, &cq_attr);
+#else
 	xrcd->cq = ib_create_cq(ibdev, NULL, NULL, xrcd, &cq_attr);
+#endif
 	if (IS_ERR(xrcd->cq)) {
 		err = PTR_ERR(xrcd->cq);
 		goto err3;
 	}
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	return 0;
+#else
 	return &xrcd->ibxrcd;
+#endif
 
 err3:
 	ib_dealloc_pd(xrcd->pd);
 err2:
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	mlx4_xrcd_free(dev->dev, xrcd->xrcdn);
+	return err;
+#else
 	mlx4_xrcd_free(to_mdev(ibdev)->dev, xrcd->xrcdn);
 err1:
 	kfree(xrcd);
 	return ERR_PTR(err);
+#endif
 }
 
 static int mlx4_ib_dealloc_xrcd(struct ib_xrcd *xrcd, struct ib_udata *udata)
@@ -1358,7 +1395,9 @@ static int mlx4_ib_dealloc_xrcd(struct ib_xrcd *xrcd, struct ib_udata *udata)
 	ib_destroy_cq(to_mxrcd(xrcd)->cq);
 	ib_dealloc_pd(to_mxrcd(xrcd)->pd);
 	mlx4_xrcd_free(to_mdev(xrcd->device)->dev, to_mxrcd(xrcd)->xrcdn);
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	kfree(xrcd);
+#endif
 
 	return 0;
 }
@@ -1432,7 +1471,11 @@ struct mlx4_ib_steering {
 };
 
 #define LAST_ETH_FIELD vlan_tag
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+#define LAST_IB_FIELD sl
+#else
 #define LAST_IB_FIELD dst_gid
+#endif
 #define LAST_IPV4_FIELD dst_ip
 #define LAST_TCP_UDP_FIELD src_port
 
@@ -1486,11 +1529,16 @@ static int parse_flow_attr(struct mlx4_dev *dev,
 			return -ENOTSUPP;
 
 		type = MLX4_NET_TRANS_RULE_ID_IB;
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+		mlx4_spec->ib.l3_qpn = cpu_to_be32(qp_num);
+		mlx4_spec->ib.qpn_mask = cpu_to_be32(MLX4_IB_FLOW_QPN_MASK);
+#else
 		mlx4_spec->ib.l3_qpn = ib_spec->ib.val.l3_type_qpn;
 		mlx4_spec->ib.qpn_mask = ib_spec->ib.mask.l3_type_qpn;
 		memcpy(&mlx4_spec->ib.dst_gid, ib_spec->ib.val.dst_gid, 16);
 		memcpy(&mlx4_spec->ib.dst_gid_msk,
 		       ib_spec->ib.mask.dst_gid, 16);
+#endif
 		break;
 
 
@@ -1653,10 +1701,12 @@ static int __mlx4_ib_create_flow(struct ib_qp *qp, struct ib_flow_attr *flow_att
 	int default_flow;
 
 	static const u16 __mlx4_domain[] = {
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 		[IB_FLOW_DOMAIN_USER] = MLX4_DOMAIN_UVERBS,
 		[IB_FLOW_DOMAIN_ETHTOOL] = MLX4_DOMAIN_ETHTOOL,
 		[IB_FLOW_DOMAIN_RFS] = MLX4_DOMAIN_RFS,
 		[IB_FLOW_DOMAIN_NIC] = MLX4_DOMAIN_NIC,
+#endif
 	};
 
 	if (flow_attr->priority > MLX4_IB_FLOW_MAX_PRIO) {
@@ -1664,10 +1714,12 @@ static int __mlx4_ib_create_flow(struct ib_qp *qp, struct ib_flow_attr *flow_att
 		return -EINVAL;
 	}
 
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	if (domain >= IB_FLOW_DOMAIN_NUM) {
 		pr_err("Invalid domain value %d\n", domain);
 		return -EINVAL;
 	}
+#endif
 
 	if (mlx4_map_sw_to_hw_steering_mode(mdev->dev, flow_type) < 0)
 		return -EINVAL;
@@ -1677,7 +1729,12 @@ static int __mlx4_ib_create_flow(struct ib_qp *qp, struct ib_flow_attr *flow_att
 		return PTR_ERR(mailbox);
 	ctrl = mailbox->buf;
 
-	ctrl->prio = cpu_to_be16(__mlx4_domain[domain] |
+	ctrl->prio = cpu_to_be16(
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+				 domain |
+#else
+				 __mlx4_domain[domain] |
+#endif
 				 flow_attr->priority);
 	ctrl->type = mlx4_map_sw_to_hw_steering_mode(mdev->dev, flow_type);
 	ctrl->port = flow_attr->port;
@@ -1833,7 +1890,10 @@ static int mlx4_ib_add_dont_trap_rule(struct mlx4_dev *dev,
 
 static struct ib_flow *mlx4_ib_create_flow(struct ib_qp *qp,
 				    struct ib_flow_attr *flow_attr,
-				    int domain, struct ib_udata *udata)
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+				    int domain,
+#endif
+				    struct ib_udata *udata)
 {
 	int err = 0, i = 0, j = 0;
 	struct mlx4_ib_flow *mflow;
@@ -1899,7 +1959,13 @@ static struct ib_flow *mlx4_ib_create_flow(struct ib_qp *qp,
 	}
 
 	while (i < ARRAY_SIZE(type) && type[i]) {
-		err = __mlx4_ib_create_flow(qp, flow_attr, domain, type[i],
+		err = __mlx4_ib_create_flow(qp, flow_attr,
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+					    MLX4_DOMAIN_UVERBS,
+#else
+					    domain,
+#endif
+					    type[i],
 					    &mflow->reg_id[i].flow);
 		if (err)
 			goto err_create_flow;
@@ -1909,7 +1975,12 @@ static struct ib_flow *mlx4_ib_create_flow(struct ib_qp *qp,
 			 */
 			flow_attr->port = 2;
 			err = __mlx4_ib_create_flow(qp, flow_attr,
-						    domain, type[j],
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+						    MLX4_DOMAIN_UVERBS,
+#else
+						    domain,
+#endif
+						    type[j],
 						    &mflow->reg_id[j].mirror);
 			flow_attr->port = 1;
 			if (err)
@@ -2323,23 +2394,55 @@ static const struct diag_counter diag_device_only[] = {
 	DIAG_COUNTER(rq_num_udsdprd, 0x118),
 };
 
-static struct rdma_hw_stats *mlx4_ib_alloc_hw_stats(struct ib_device *ibdev,
-						    u8 port_num)
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+static struct rdma_hw_stats *
+mlx4_ib_alloc_hw_device_stats(struct ib_device *ibdev)
 {
 	struct mlx4_ib_dev *dev = to_mdev(ibdev);
 	struct mlx4_ib_diag_counters *diag = dev->diag_counters;
 
+	if (!diag[0].descs)
+		return NULL;
+
+	return rdma_alloc_hw_stats_struct(diag[0].descs, diag[0].num_counters,
+					  RDMA_HW_STATS_DEFAULT_LIFESPAN);
+}
+
+static struct rdma_hw_stats *
+mlx4_ib_alloc_hw_port_stats(struct ib_device *ibdev, u32 port_num)
+#else
+static struct rdma_hw_stats *mlx4_ib_alloc_hw_stats(struct ib_device *ibdev,
+						    u8 port_num)
+#endif
+{
+	struct mlx4_ib_dev *dev = to_mdev(ibdev);
+	struct mlx4_ib_diag_counters *diag = dev->diag_counters;
+
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	if (!diag[1].descs)
+		return NULL;
+
+	return rdma_alloc_hw_stats_struct(diag[1].descs,
+					  diag[1].num_counters,
+					  RDMA_HW_STATS_DEFAULT_LIFESPAN);
+#else
 	if (!diag[!!port_num].name)
 		return NULL;
 
 	return rdma_alloc_hw_stats_struct(diag[!!port_num].name,
 					  diag[!!port_num].num_counters,
 					  RDMA_HW_STATS_DEFAULT_LIFESPAN);
+#endif
 }
 
 static int mlx4_ib_get_hw_stats(struct ib_device *ibdev,
 				struct rdma_hw_stats *stats,
-				u8 port, int index)
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+				u32 port,
+#else
+				u8 port,
+#endif
+				int index)
 {
 	struct mlx4_ib_dev *dev = to_mdev(ibdev);
 	struct mlx4_ib_diag_counters *diag = dev->diag_counters;
@@ -2363,7 +2466,11 @@ static int mlx4_ib_get_hw_stats(struct ib_device *ibdev,
 }
 
 static int __mlx4_ib_alloc_diag_counters(struct mlx4_ib_dev *ibdev,
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+					 struct rdma_stat_desc **descs,
+#else
 					 const char ***name,
+#endif
 					 u32 **offset,
 					 u32 *num,
 					 bool port)
@@ -2378,8 +2485,13 @@ static int __mlx4_ib_alloc_diag_counters(struct mlx4_ib_dev *ibdev,
 	if (!port)
 		num_counters += ARRAY_SIZE(diag_device_only);
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	*descs = kcalloc(num_counters, sizeof(**descs), GFP_KERNEL);
+	if (!*descs)
+#else
 	*name = kcalloc(num_counters, sizeof(**name), GFP_KERNEL);
 	if (!*name)
+#endif
 		return -ENOMEM;
 
 	*offset = kcalloc(num_counters, sizeof(**offset), GFP_KERNEL);
@@ -2391,12 +2503,20 @@ static int __mlx4_ib_alloc_diag_counters(struct mlx4_ib_dev *ibdev,
 	return 0;
 
 err_name:
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	kfree(*descs);
+#else
 	kfree(*name);
+#endif
 	return -ENOMEM;
 }
 
 static void mlx4_ib_fill_diag_counters(struct mlx4_ib_dev *ibdev,
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+				       struct rdma_stat_desc *descs,
+#else
 				       const char **name,
+#endif
 				       u32 *offset,
 				       bool port)
 {
@@ -2404,29 +2524,53 @@ static void mlx4_ib_fill_diag_counters(struct mlx4_ib_dev *ibdev,
 	int j;
 
 	for (i = 0, j = 0; i < ARRAY_SIZE(diag_basic); i++, j++) {
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+		descs[i].name = diag_basic[i].name;
+#else
 		name[i] = diag_basic[i].name;
+#endif
 		offset[i] = diag_basic[i].offset;
 	}
 
 	if (ibdev->dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_DIAG_PER_PORT) {
 		for (i = 0; i < ARRAY_SIZE(diag_ext); i++, j++) {
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+			descs[j].name = diag_ext[i].name;
+#else
 			name[j] = diag_ext[i].name;
+#endif
 			offset[j] = diag_ext[i].offset;
 		}
 	}
 
 	if (!port) {
 		for (i = 0; i < ARRAY_SIZE(diag_device_only); i++, j++) {
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+			descs[j].name = diag_device_only[i].name;
+#else
 			name[j] = diag_device_only[i].name;
+#endif
 			offset[j] = diag_device_only[i].offset;
 		}
 	}
 }
 
 static const struct ib_device_ops mlx4_ib_hw_stats_ops = {
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	.alloc_hw_device_stats = mlx4_ib_alloc_hw_device_stats,
+	.alloc_hw_port_stats = mlx4_ib_alloc_hw_port_stats,
+#else
 	.alloc_hw_stats = mlx4_ib_alloc_hw_stats,
+#endif
 	.get_hw_stats = mlx4_ib_get_hw_stats,
 };
+
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+static const struct ib_device_ops mlx4_ib_hw_stats_ops1 = {
+	.alloc_hw_device_stats = mlx4_ib_alloc_hw_device_stats,
+	.get_hw_stats = mlx4_ib_get_hw_stats,
+};
+#endif
 
 static int mlx4_ib_alloc_diag_counters(struct mlx4_ib_dev *ibdev)
 {
@@ -2441,17 +2585,33 @@ static int mlx4_ib_alloc_diag_counters(struct mlx4_ib_dev *ibdev)
 
 	for (i = 0; i < MLX4_DIAG_COUNTERS_TYPES; i++) {
 		/* i == 1 means we are building port counters */
-		if (i && !per_port)
+		if (i && !per_port) {
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+			ib_set_device_ops(&ibdev->ib_dev,
+					  &mlx4_ib_hw_stats_ops1);
+#endif
 			continue;
+		}
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+		ret = __mlx4_ib_alloc_diag_counters(ibdev, &diag[i].descs,
+						    &diag[i].offset,
+						    &diag[i].num_counters, i);
+#else
 		ret = __mlx4_ib_alloc_diag_counters(ibdev, &diag[i].name,
 						    &diag[i].offset,
 						    &diag[i].num_counters, i);
+#endif
 		if (ret)
 			goto err_alloc;
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+		mlx4_ib_fill_diag_counters(ibdev, diag[i].descs,
+					   diag[i].offset, i);
+#else
 		mlx4_ib_fill_diag_counters(ibdev, diag[i].name,
 					   diag[i].offset, i);
+#endif
 	}
 
 	ib_set_device_ops(&ibdev->ib_dev, &mlx4_ib_hw_stats_ops);
@@ -2460,7 +2620,11 @@ static int mlx4_ib_alloc_diag_counters(struct mlx4_ib_dev *ibdev)
 
 err_alloc:
 	if (i) {
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+		kfree(diag[i - 1].descs);
+#else
 		kfree(diag[i - 1].name);
+#endif
 		kfree(diag[i - 1].offset);
 	}
 
@@ -2473,7 +2637,11 @@ static void mlx4_ib_diag_cleanup(struct mlx4_ib_dev *ibdev)
 
 	for (i = 0; i < MLX4_DIAG_COUNTERS_TYPES; i++) {
 		kfree(ibdev->diag_counters[i].offset);
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+		kfree(ibdev->diag_counters[i].descs);
+#else
 		kfree(ibdev->diag_counters[i].name);
+#endif
 	}
 }
 
@@ -3373,11 +3541,17 @@ int mlx4_ib_steer_qp_reg(struct mlx4_ib_dev *mdev, struct mlx4_ib_qp *mqp,
 		ib_spec = (struct ib_flow_spec_ib *)(flow + 1);
 		ib_spec->type = IB_FLOW_SPEC_IB;
 		ib_spec->size = sizeof(struct ib_flow_spec_ib);
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 		ib_spec->val.l3_type_qpn =
 			cpu_to_be32(mqp->ibqp.qp_num & MLX4_IB_FLOW_QPN_MASK);
 		ib_spec->mask.l3_type_qpn = cpu_to_be32(MLX4_IB_FLOW_QPN_MASK);
+#endif
 		err = __mlx4_ib_create_flow(&mqp->ibqp, flow,
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+					    MLX4_DOMAIN_NIC,
+#else
 					    IB_FLOW_DOMAIN_NIC,
+#endif
 					    MLX4_FS_REGULAR,
 					    &mqp->flow);
 	} else {
