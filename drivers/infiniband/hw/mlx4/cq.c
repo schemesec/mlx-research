@@ -190,29 +190,51 @@ err_buf:
 }
 
 #define CQ_CREATE_FLAGS_SUPPORTED IB_UVERBS_CQ_FLAGS_TIMESTAMP_COMPLETION
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+int mlx4_ib_create_cq(struct ib_cq *ibcq, const struct ib_cq_init_attr *attr,
+		      struct uverbs_attr_bundle *attrs)
+#else
 struct ib_cq *mlx4_ib_create_cq(struct ib_device *ibdev,
 				const struct ib_cq_init_attr *attr,
 				struct ib_udata *udata)
+#endif
 {
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	struct ib_udata *udata = attrs ? &attrs->driver_udata : NULL;
+	struct ib_device *ibdev = ibcq->device;
+#endif
 	int entries = attr->cqe;
 	int vector = attr->comp_vector;
 	struct mlx4_ib_dev *dev = to_mdev(ibdev);
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	struct mlx4_ib_cq *cq = to_mcq(ibcq);
+#else
 	struct mlx4_ib_cq *cq;
+#endif
 	struct mlx4_uar *uar;
 	void *buf_addr;
 	int err;
-	struct mlx4_ib_ucontext *context = rdma_udata_to_drv_context(
-		udata, struct mlx4_ib_ucontext, ibucontext);
+	struct mlx4_ib_ucontext *context = NULL;
 
 	if (entries < 1 || entries > dev->dev->caps.max_cqes)
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+		return -EINVAL;
+#else
 		return ERR_PTR(-EINVAL);
+#endif
 
 	if (attr->flags & ~CQ_CREATE_FLAGS_SUPPORTED)
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+		return -EINVAL;
+#else
 		return ERR_PTR(-EINVAL);
+#endif
 
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	cq = kzalloc(sizeof(*cq), GFP_KERNEL);
 	if (!cq)
 		return ERR_PTR(-ENOMEM);
+#endif
 
 	entries      = roundup_pow_of_two(entries + 1);
 	cq->ibcq.cqe = entries - 1;
@@ -226,6 +248,9 @@ struct ib_cq *mlx4_ib_create_cq(struct ib_device *ibdev,
 
 	if (udata) {
 		struct mlx4_ib_create_cq ucmd;
+
+		context = rdma_udata_to_drv_context(
+			udata, struct mlx4_ib_ucontext, ibucontext);
 
 		if (ib_copy_from_udata(&ucmd, udata, sizeof ucmd)) {
 			err = -EFAULT;
@@ -294,7 +319,11 @@ struct ib_cq *mlx4_ib_create_cq(struct ib_device *ibdev,
 			goto err_cq_free;
 		}
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	return 0;
+#else
 	return &cq->ibcq;
+#endif
 
 err_cq_free:
 	mlx4_cq_free(dev->dev, &cq->mcq);
@@ -316,9 +345,13 @@ err_db:
 		mlx4_db_free(dev->dev, &cq->db);
 
 err_cq:
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	kfree(cq);
 
 	return ERR_PTR(err);
+#else
+	return err;
+#endif
 }
 
 static int mlx4_alloc_resize_buf(struct mlx4_ib_dev *dev, struct mlx4_ib_cq *cq,

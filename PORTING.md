@@ -148,6 +148,28 @@ These are compatibility adapter work items. They should be fixed by mapping the
 OFED mlx4 implementation onto the stock Proxmox RDMA API, not by suppressing
 warnings or disabling error paths.
 
+The next adapter pass started moving `mlx4_ib` toward the stock RDMA object
+model:
+
+- `ib_device_ops` metadata is populated in the ops table for stock-RDMA mode
+- port-number callbacks use stock `u32` signatures
+- `mlx4_ib_create_ah()` uses `struct rdma_ah_init_attr` in stock-RDMA mode
+- `mlx4_ib_create_cq()` uses the stock core-owned CQ object model in
+  stock-RDMA mode
+- `mlx4_ib_dealloc_pd()` returns an error code as expected by stock RDMA core
+
+After those changes, the isolated build gets past `ah.c` and `cq.c`. The
+remaining compile blockers are concentrated in:
+
+- flow steering field/domain API drift (`struct ib_flow_ib_filter`,
+  `IB_FLOW_DOMAIN_*`)
+- hardware stats API drift (`alloc_hw_port_stats` /
+  `alloc_hw_device_stats`, `struct rdma_stat_desc`)
+- MAD processing signature drift
+- `rereg_user_mr` return type drift
+- stock core-owned object allocation for RWQ indirection tables and XRCDs
+- `create_flow` signature drift
+
 ## Next Implementation Direction
 
 Create a deliberate stock-RDMA-ABI build mode instead of continuing with ad hoc

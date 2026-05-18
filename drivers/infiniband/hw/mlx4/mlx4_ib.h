@@ -625,6 +625,9 @@ struct mlx4_ib_counters {
 #define MLX4_DIAG_COUNTERS_TYPES 2
 
 struct mlx4_ib_diag_counters {
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	struct rdma_stat_desc *descs;
+#endif
 	const char **name;
 	u32 *offset;
 	u32 num_counters;
@@ -793,11 +796,20 @@ struct ib_mr *mlx4_ib_get_dma_mr(struct ib_pd *pd, int acc);
 int mlx4_ib_umem_write_mtt(struct mlx4_ib_dev *dev, struct mlx4_mtt *mtt,
 			   struct ib_umem *umem);
 struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd,
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+				  u64 start, u64 length, u64 virt_addr,
+				  int mr_access_flags, struct ib_dmah *dmah,
+#else
 				  struct ib_mr_init_attr *attr,
+#endif
 				  struct ib_udata *udata);
 int mlx4_ib_dereg_mr(struct ib_mr *mr, struct ib_udata *udata);
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+int mlx4_ib_alloc_mw(struct ib_mw *mw, struct ib_udata *udata);
+#else
 struct ib_mw *mlx4_ib_alloc_mw(struct ib_pd *pd, enum ib_mw_type type,
 			       struct ib_udata *udata);
+#endif
 int mlx4_ib_dealloc_mw(struct ib_mw *mw);
 struct ib_mr *mlx4_ib_alloc_mr(struct ib_pd *pd, enum ib_mr_type mr_type,
 			       u32 max_num_sg);
@@ -805,36 +817,58 @@ int mlx4_ib_map_mr_sg(struct ib_mr *ibmr, struct scatterlist *sg, int sg_nents,
 		      unsigned int *sg_offset);
 int mlx4_ib_modify_cq(struct ib_cq *cq, u16 cq_count, u16 cq_period);
 int mlx4_ib_resize_cq(struct ib_cq *ibcq, int entries, struct ib_udata *udata);
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+int mlx4_ib_create_cq(struct ib_cq *ibcq, const struct ib_cq_init_attr *attr,
+		      struct uverbs_attr_bundle *attrs);
+#else
 struct ib_cq *mlx4_ib_create_cq(struct ib_device *ibdev,
 				const struct ib_cq_init_attr *attr,
 				struct ib_udata *udata);
+#endif
 int mlx4_ib_destroy_cq(struct ib_cq *cq, struct ib_udata *udata);
 int mlx4_ib_poll_cq(struct ib_cq *ibcq, int num_entries, struct ib_wc *wc);
 int mlx4_ib_arm_cq(struct ib_cq *cq, enum ib_cq_notify_flags flags);
 void __mlx4_ib_cq_clean(struct mlx4_ib_cq *cq, u32 qpn, struct mlx4_ib_srq *srq);
 void mlx4_ib_cq_clean(struct mlx4_ib_cq *cq, u32 qpn, struct mlx4_ib_srq *srq);
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+int mlx4_ib_create_ah(struct ib_ah *ah, struct rdma_ah_init_attr *init_attr,
+		      struct ib_udata *udata);
+#else
 int mlx4_ib_create_ah(struct ib_ah *ah, struct rdma_ah_attr *ah_attr, u32 flags,
 		      struct ib_udata *udata);
+#endif
 int mlx4_ib_create_ah_slave(struct ib_ah *ah, struct rdma_ah_attr *ah_attr,
 			    int slave_sgid_index, u8 *s_mac, u16 vlan_tag);
 int mlx4_ib_query_ah(struct ib_ah *ibah, struct rdma_ah_attr *ah_attr);
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+static inline int mlx4_ib_destroy_ah(struct ib_ah *ah, u32 flags)
+{
+	return 0;
+}
+#else
 void mlx4_ib_destroy_ah(struct ib_ah *ah, u32 flags);
+#endif
 
 int mlx4_ib_create_srq(struct ib_srq *srq, struct ib_srq_init_attr *init_attr,
 		       struct ib_udata *udata);
 int mlx4_ib_modify_srq(struct ib_srq *ibsrq, struct ib_srq_attr *attr,
 		       enum ib_srq_attr_mask attr_mask, struct ib_udata *udata);
 int mlx4_ib_query_srq(struct ib_srq *srq, struct ib_srq_attr *srq_attr);
-void mlx4_ib_destroy_srq(struct ib_srq *srq, struct ib_udata *udata);
+int mlx4_ib_destroy_srq(struct ib_srq *srq, struct ib_udata *udata);
 void mlx4_ib_free_srq_wqe(struct mlx4_ib_srq *srq, int wqe_index);
 int mlx4_ib_post_srq_recv(struct ib_srq *ibsrq, const struct ib_recv_wr *wr,
 			  const struct ib_recv_wr **bad_wr);
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+int mlx4_ib_create_qp(struct ib_qp *qp, struct ib_qp_init_attr *init_attr,
+		      struct ib_udata *udata);
+#else
 struct ib_qp *mlx4_ib_create_qp(struct ib_pd *pd,
 				struct ib_qp_init_attr *init_attr,
 				struct ib_udata *udata,
 				int is_exp);
+#endif
 int mlx4_ib_destroy_qp(struct ib_qp *qp, struct ib_udata *udata);
 void mlx4_ib_drain_sq(struct ib_qp *qp);
 void mlx4_ib_drain_rq(struct ib_qp *qp);

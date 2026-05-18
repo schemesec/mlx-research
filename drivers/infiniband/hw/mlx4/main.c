@@ -137,7 +137,7 @@ static int dr_active;
 
 static void do_slave_init(struct mlx4_ib_dev *ibdev, int slave, int do_init);
 static enum rdma_link_layer mlx4_ib_port_link_layer(struct ib_device *device,
-						    u8 port_num);
+						    u32 port_num);
 
 static int _mlx4_ib_mcg_detach(struct ib_qp *ibqp, union ib_gid *gid, u16 lid,
 			       int count);
@@ -190,7 +190,7 @@ static int num_ib_ports(struct mlx4_dev *dev)
 	return ib_ports;
 }
 
-static struct net_device *mlx4_ib_get_netdev(struct ib_device *device, u8 port_num)
+static struct net_device *mlx4_ib_get_netdev(struct ib_device *device, u32 port_num)
 {
 	struct mlx4_ib_dev *ibdev = to_mdev(device);
 	struct net_device *dev;
@@ -239,7 +239,19 @@ static int rdma_is_default_gid(struct  net_device *dev,
 {
 	union ib_gid default_gid;
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	default_gid.global.subnet_prefix = cpu_to_be64(0xfe80000000000000LL);
+	if (std)
+		addrconf_addr_eui48(&default_gid.raw[8], dev->dev_addr);
+	else
+		memcpy(&default_gid.raw[8], dev->dev_addr, 3);
+		memcpy(&default_gid.raw[13], dev->dev_addr + 3, 3);
+		default_gid.raw[11] = 0xff;
+		default_gid.raw[12] = 0xfe;
+		default_gid.raw[8] ^= 2;
+#else
 	rdma_make_default_gid(dev, &default_gid, std);
+#endif
 	return !memcmp(&default_gid, gid, sizeof(default_gid));
 }
 
@@ -501,8 +513,12 @@ int mlx4_ib_query_device(struct ib_device *ibdev,
 	props->device_cap_flags    = IB_DEVICE_CHANGE_PHY_PORT |
 		IB_DEVICE_PORT_ACTIVE_EVENT		|
 		IB_DEVICE_SYS_IMAGE_GUID		|
-		IB_DEVICE_RC_RNR_NAK_GEN		|
-		IB_DEVICE_BLOCK_MULTICAST_LOOPBACK;
+		IB_DEVICE_RC_RNR_NAK_GEN;
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	props->kernel_cap_flags |= IBK_BLOCK_MULTICAST_LOOPBACK;
+#else
+	props->device_cap_flags |= IB_DEVICE_BLOCK_MULTICAST_LOOPBACK;
+#endif
 	if (dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_BAD_PKEY_CNTR)
 		props->device_cap_flags |= IB_DEVICE_BAD_PKEY_CNTR;
 	if (dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_BAD_QKEY_CNTR)
@@ -516,9 +532,17 @@ int mlx4_ib_query_device(struct ib_device *ibdev,
 	if (dev->dev->caps.max_gso_sz &&
 	    (dev->dev->rev_id != MLX4_IB_CARD_REV_A0) &&
 	    (dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_BLH))
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+		props->kernel_cap_flags |= IBK_UD_TSO;
+#else
 		props->device_cap_flags |= IB_DEVICE_UD_TSO;
+#endif
 	if (dev->dev->caps.bmme_flags & MLX4_BMME_FLAG_RESERVED_LKEY)
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+		props->kernel_cap_flags |= IBK_LOCAL_DMA_LKEY;
+#else
 		props->device_cap_flags |= IB_DEVICE_LOCAL_DMA_LKEY;
+#endif
 	if ((dev->dev->caps.bmme_flags & MLX4_BMME_FLAG_LOCAL_INV) &&
 	    (dev->dev->caps.bmme_flags & MLX4_BMME_FLAG_REMOTE_INV) &&
 	    (dev->dev->caps.bmme_flags & MLX4_BMME_FLAG_FAST_REG_WR))
@@ -526,7 +550,9 @@ int mlx4_ib_query_device(struct ib_device *ibdev,
 	if (dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_XRC)
 		props->device_cap_flags |= IB_DEVICE_XRC;
 	if (dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_CROSS_CHANNEL)
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 		props->device_cap_flags |= IB_DEVICE_CROSS_CHANNEL;
+#endif
 	if (dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_MEM_WINDOW)
 		props->device_cap_flags |= IB_DEVICE_MEM_WINDOW;
 	if (dev->dev->caps.bmme_flags & MLX4_BMME_FLAG_TYPE_2_WIN) {
@@ -575,7 +601,9 @@ int mlx4_ib_query_device(struct ib_device *ibdev,
 	props->max_mcast_qp_attach = dev->dev->caps.num_qp_per_mgm;
 	props->max_total_mcast_qp_attach = props->max_mcast_qp_attach *
 					   props->max_mcast_grp;
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	props->max_map_per_fmr = dev->dev->caps.max_fmr_maps;
+#endif
 	props->hca_core_clock = dev->dev->caps.hca_core_clock * 1000UL;
 	props->timestamp_mask = 0xFFFFFFFFFFFFULL;
 	props->max_ah = INT_MAX;
@@ -664,7 +692,7 @@ out:
 }
 
 static enum rdma_link_layer
-mlx4_ib_port_link_layer(struct ib_device *device, u8 port_num)
+mlx4_ib_port_link_layer(struct ib_device *device, u32 port_num)
 {
 	struct mlx4_dev *dev = to_mdev(device)->dev;
 
@@ -841,7 +869,7 @@ int __mlx4_ib_query_port(struct ib_device *ibdev, u8 port,
 	return err;
 }
 
-static int mlx4_ib_query_port(struct ib_device *ibdev, u8 port,
+static int mlx4_ib_query_port(struct ib_device *ibdev, u32 port,
 			      struct ib_port_attr *props)
 {
 	/* returns host view */
@@ -904,7 +932,7 @@ out:
 	return err;
 }
 
-static int mlx4_ib_query_gid(struct ib_device *ibdev, u8 port, int index,
+static int mlx4_ib_query_gid(struct ib_device *ibdev, u32 port, int index,
 			     union ib_gid *gid)
 {
 	if (rdma_protocol_ib(ibdev, port))
@@ -1005,7 +1033,7 @@ out:
 	return err;
 }
 
-static int mlx4_ib_query_pkey(struct ib_device *ibdev, u8 port, u16 index, u16 *pkey)
+static int mlx4_ib_query_pkey(struct ib_device *ibdev, u32 port, u16 index, u16 *pkey)
 {
 	return __mlx4_ib_query_pkey(ibdev, port, index, pkey, 0);
 }
@@ -1072,7 +1100,7 @@ static int mlx4_ib_SET_PORT(struct mlx4_ib_dev *dev, u8 port, int reset_qkey_vio
 	return err;
 }
 
-static int mlx4_ib_modify_port(struct ib_device *ibdev, u8 port, int mask,
+static int mlx4_ib_modify_port(struct ib_device *ibdev, u32 port, int mask,
 			       struct ib_port_modify *props)
 {
 	struct mlx4_ib_dev *mdev = to_mdev(ibdev);
@@ -1119,7 +1147,13 @@ static int mlx4_ib_alloc_ucontext(struct ib_ucontext *uctx,
 	if (!dev->ib_active)
 		return -EAGAIN;
 
-	if (ibdev->uverbs_abi_ver == MLX4_IB_UVERBS_NO_DEV_CAPS_ABI_VERSION) {
+	if (
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	    ibdev->ops.uverbs_abi_ver
+#else
+	    ibdev->uverbs_abi_ver
+#endif
+	    == MLX4_IB_UVERBS_NO_DEV_CAPS_ABI_VERSION) {
 		resp_v3.qp_tab_size      = dev->dev->caps.num_qps;
 		if (mlx4_arch_bf_support()) {
 			resp_v3.bf_reg_size      = dev->dev->caps.bf_reg_size;
@@ -1153,7 +1187,13 @@ static int mlx4_ib_alloc_ucontext(struct ib_ucontext *uctx,
 	INIT_LIST_HEAD(&context->wqn_ranges_list);
 	mutex_init(&context->wqn_ranges_mutex);
 
-	if (ibdev->uverbs_abi_ver == MLX4_IB_UVERBS_NO_DEV_CAPS_ABI_VERSION)
+	if (
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	    ibdev->ops.uverbs_abi_ver
+#else
+	    ibdev->uverbs_abi_ver
+#endif
+	    == MLX4_IB_UVERBS_NO_DEV_CAPS_ABI_VERSION)
 		err = ib_copy_to_udata(udata, &resp_v3, sizeof(resp_v3));
 	else
 		err = ib_copy_to_udata(udata, &resp, sizeof(resp));
@@ -1265,9 +1305,10 @@ static int mlx4_ib_alloc_pd(struct ib_pd *ibpd, struct ib_udata *udata)
 	return 0;
 }
 
-static void mlx4_ib_dealloc_pd(struct ib_pd *pd, struct ib_udata *udata)
+static int mlx4_ib_dealloc_pd(struct ib_pd *pd, struct ib_udata *udata)
 {
 	mlx4_pd_free(to_mdev(pd->device)->dev, to_mpd(pd)->pdn);
+	return 0;
 }
 
 static struct ib_xrcd *mlx4_ib_alloc_xrcd(struct ib_device *ibdev,
@@ -2679,7 +2720,7 @@ static void mlx4_ib_free_eqs(struct mlx4_dev *dev, struct mlx4_ib_dev *ibdev)
 	ibdev->eq_table = NULL;
 }
 
-static int mlx4_port_immutable(struct ib_device *ibdev, u8 port_num,
+static int mlx4_port_immutable(struct ib_device *ibdev, u32 port_num,
 			       struct ib_port_immutable *immutable)
 {
 	struct ib_port_attr attr;
@@ -2782,6 +2823,12 @@ static void get_fw_ver_str(struct ib_device *device, char *str)
 }
 
 static const struct ib_device_ops mlx4_ib_dev_ops = {
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	.owner = THIS_MODULE,
+	.driver_id = RDMA_DRIVER_MLX4,
+	.uverbs_abi_ver = MLX4_IB_UVERBS_ABI_VERSION,
+	.device_group = &mlx4_attr_group,
+#endif
 	.add_gid = mlx4_ib_add_gid,
 	.alloc_mr = mlx4_ib_alloc_mr,
 	.alloc_pd = mlx4_ib_alloc_pd,
@@ -2789,7 +2836,11 @@ static const struct ib_device_ops mlx4_ib_dev_ops = {
 	.attach_mcast = mlx4_ib_mcg_attach,
 	.create_ah = mlx4_ib_create_ah,
 	.create_cq = mlx4_ib_create_cq,
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	.create_qp = mlx4_ib_create_qp,
+#else
 	.create_qp = mlx4_ib_create_qp_wrp,
+#endif
 	.create_srq = mlx4_ib_create_srq,
 	.dealloc_pd = mlx4_ib_dealloc_pd,
 	.dealloc_ucontext = mlx4_ib_dealloc_ucontext,
@@ -2937,7 +2988,6 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 		sprintf(ibdev->ib_dev.name, "mlx4_%d", dev_idx);
 	else
 		strlcpy(ibdev->ib_dev.name, "mlx4_%d", IB_DEVICE_NAME_MAX);
-	ibdev->ib_dev.owner		= THIS_MODULE;
 	ibdev->ib_dev.node_type		= RDMA_NODE_IB_CA;
 	ibdev->ib_dev.local_dma_lkey	= dev->caps.reserved_lkey;
 	ibdev->num_ports		= num_ports;
@@ -2945,12 +2995,15 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 						1 : ibdev->num_ports;
 	ibdev->ib_dev.num_comp_vectors	= dev->caps.num_comp_vectors;
 	ibdev->ib_dev.dev.parent	= &dev->persist->pdev->dev;
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	ibdev->ib_dev.owner		= THIS_MODULE;
 	ibdev->ib_dev.dev_immutable.bond_device = mlx4_is_bonded(dev);
 
 	if (dev->caps.userspace_caps)
 		ibdev->ib_dev.uverbs_abi_ver = MLX4_IB_UVERBS_ABI_VERSION;
 	else
 		ibdev->ib_dev.uverbs_abi_ver = MLX4_IB_UVERBS_NO_DEV_CAPS_ABI_VERSION;
+#endif
 
 	ibdev->ib_dev.uverbs_cmd_mask	=
 		(1ull << IB_USER_VERBS_CMD_GET_CONTEXT)		|
@@ -2979,11 +3032,18 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 		(1ull << IB_USER_VERBS_CMD_OPEN_QP);
 
 	ib_set_device_ops(&ibdev->ib_dev, &mlx4_ib_dev_ops);
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	if (!dev->caps.userspace_caps)
+		ibdev->ib_dev.ops.uverbs_abi_ver =
+			MLX4_IB_UVERBS_NO_DEV_CAPS_ABI_VERSION;
+#endif
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	ibdev->ib_dev.uverbs_ex_cmd_mask |=
 		(1ull << IB_USER_VERBS_EX_CMD_MODIFY_CQ) |
 		(1ull << IB_USER_VERBS_EX_CMD_QUERY_DEVICE) |
 		(1ull << IB_USER_VERBS_EX_CMD_CREATE_CQ) |
 		(1ull << IB_USER_VERBS_EX_CMD_CREATE_QP);
+#endif
 
 #ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	ibdev->ib_dev.uverbs_exp_cmd_mask =
@@ -3001,12 +3061,14 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 	    IB_LINK_LAYER_ETHERNET) ||
 	    (mlx4_ib_port_link_layer(&ibdev->ib_dev, 2) ==
 	    IB_LINK_LAYER_ETHERNET))) {
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 		ibdev->ib_dev.uverbs_ex_cmd_mask |=
 			(1ull << IB_USER_VERBS_EX_CMD_CREATE_WQ)	  |
 			(1ull << IB_USER_VERBS_EX_CMD_MODIFY_WQ)	  |
 			(1ull << IB_USER_VERBS_EX_CMD_DESTROY_WQ)	  |
 			(1ull << IB_USER_VERBS_EX_CMD_CREATE_RWQ_IND_TBL) |
 			(1ull << IB_USER_VERBS_EX_CMD_DESTROY_RWQ_IND_TBL);
+#endif
 		ib_set_device_ops(&ibdev->ib_dev, &mlx4_ib_dev_wq_ops);
 	}
 
@@ -3032,9 +3094,11 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 
 	if (check_flow_steering_support(dev)) {
 		ibdev->steering_support = MLX4_STEERING_MODE_DEVICE_MANAGED;
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 		ibdev->ib_dev.uverbs_ex_cmd_mask	|=
 			(1ull << IB_USER_VERBS_EX_CMD_CREATE_FLOW) |
 			(1ull << IB_USER_VERBS_EX_CMD_DESTROY_FLOW);
+#endif
 		ib_set_device_ops(&ibdev->ib_dev, &mlx4_ib_dev_fs_ops);
 	}
 
@@ -3148,9 +3212,14 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 	if (mlx4_ib_alloc_diag_counters(ibdev))
 		goto err_steer_free_bitmap;
 
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	rdma_set_device_sysfs_group(&ibdev->ib_dev, &mlx4_attr_group);
 	ibdev->ib_dev.driver_id = RDMA_DRIVER_MLX4;
 	if (ib_register_device(&ibdev->ib_dev, ibdev->ib_dev.name))
+#else
+	if (ib_register_device(&ibdev->ib_dev, ibdev->ib_dev.name,
+			       &dev->persist->pdev->dev))
+#endif
 		goto err_diag_counters;
 
 	for (j = 0; j < ibdev->ib_dev.num_comp_vectors; j++)

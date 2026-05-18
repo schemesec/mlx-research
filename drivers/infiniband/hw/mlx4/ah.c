@@ -141,10 +141,18 @@ static int create_iboe_ah(struct ib_ah *ib_ah, struct rdma_ah_attr *ah_attr)
 	return 0;
 }
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+int mlx4_ib_create_ah(struct ib_ah *ib_ah, struct rdma_ah_init_attr *init_attr,
+		      struct ib_udata *udata)
+#else
 int mlx4_ib_create_ah(struct ib_ah *ib_ah, struct rdma_ah_attr *ah_attr,
 		      u32 flags, struct ib_udata *udata)
-
+#endif
 {
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	struct rdma_ah_attr *ah_attr = init_attr->ah_attr;
+#endif
+
 	if (ah_attr->type == RDMA_AH_ATTR_TYPE_ROCE) {
 		if (!(rdma_ah_get_ah_flags(ah_attr) & IB_AH_GRH))
 			return -EINVAL;
@@ -167,12 +175,20 @@ int mlx4_ib_create_ah_slave(struct ib_ah *ah, struct rdma_ah_attr *ah_attr,
 			    int slave_sgid_index, u8 *s_mac, u16 vlan_tag)
 {
 	struct rdma_ah_attr slave_attr = *ah_attr;
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	struct rdma_ah_init_attr init_attr = {};
+#endif
 	struct mlx4_ib_ah *mah = to_mah(ah);
 	int ret;
 
 	slave_attr.grh.sgid_attr = NULL;
 	slave_attr.grh.sgid_index = slave_sgid_index;
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
+	init_attr.ah_attr = &slave_attr;
+	ret = mlx4_ib_create_ah(ah, &init_attr, NULL);
+#else
 	ret = mlx4_ib_create_ah(ah, &slave_attr, 0, NULL);
+#endif
 	if (ret)
 		return ret;
 
@@ -230,7 +246,9 @@ int mlx4_ib_query_ah(struct ib_ah *ibah, struct rdma_ah_attr *ah_attr)
 	return 0;
 }
 
+#ifndef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 void mlx4_ib_destroy_ah(struct ib_ah *ah, u32 flags)
 {
 	return;
 }
+#endif
