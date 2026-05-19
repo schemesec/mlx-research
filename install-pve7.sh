@@ -8,6 +8,11 @@ INSTALL_DIR="${INSTALL_DIR:-/lib/modules/${KVER}/updates/mlnx-ofed-cx3}"
 MLNX_PYTHON="${MLNX_PYTHON:-}"
 MODULE_KCFLAGS="${MODULE_KCFLAGS:-}"
 BACKUP_DIR="${BACKUP_DIR:-}"
+NUM_VFS="${NUM_VFS:-8}"
+ROCE_MODE="${ROCE_MODE:-2}"
+UD_GID_TYPE="${UD_GID_TYPE:-2}"
+PORT_TYPE_ARRAY="${PORT_TYPE_ARRAY:-2,2}"
+LOG_NUM_MGM_ENTRY_SIZE="${LOG_NUM_MGM_ENTRY_SIZE:--7}"
 BUILD_ONLY=0
 NO_BUILD=0
 FORCE_KERNEL=0
@@ -35,6 +40,9 @@ Environment:
                      /lib/modules/\$KVER/updates/mlnx-ofed-cx3
   BACKUP_DIR=...     Backup directory for the previous installed modules.
                      Default: ./module-backups/\$KVER/mlnx-ofed-cx3.backup-<timestamp>
+  NUM_VFS=...        mlx4 PF0 VF count. Default: 8.
+  ROCE_MODE=...      mlx4 RoCE mode. Default: 2.
+  UD_GID_TYPE=...    mlx4 UD GID type. Default: 2.
 EOF
 }
 
@@ -115,7 +123,8 @@ ensure_initramfs_modules() {
 		printf '%s\n' "$begin"
 		printf '%s\n' mlx_compat
 		printf '%s\n' ib_core
-		printf '%s\n' mlx4_core
+		printf 'mlx4_core num_vfs=%s,0,0 probe_vf=%s,0,0 port_type_array=%s roce_mode=%s ud_gid_type=%s enable_sys_tune=1 log_num_mgm_entry_size=%s\n' \
+			"$NUM_VFS" "$NUM_VFS" "$PORT_TYPE_ARRAY" "$ROCE_MODE" "$UD_GID_TYPE" "$LOG_NUM_MGM_ENTRY_SIZE"
 		printf '%s\n' mlx4_en
 		printf '%s\n' mlx4_ib
 		printf '%s\n' "$end"

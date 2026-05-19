@@ -11,6 +11,8 @@ AUTO_REBOOT="${AUTO_REBOOT:-0}"
 INSTALL_PACKAGES="${INSTALL_PACKAGES:-0}"
 ROCE_MODE="${ROCE_MODE:-2}"
 UD_GID_TYPE="${UD_GID_TYPE:-2}"
+PORT_TYPE_ARRAY="${PORT_TYPE_ARRAY:-2,2}"
+LOG_NUM_MGM_ENTRY_SIZE="${LOG_NUM_MGM_ENTRY_SIZE:--7}"
 MLX4_CONF="${MLX4_CONF:-/etc/modprobe.d/mlx4.conf}"
 ASSIGN_VF_MACS="${ASSIGN_VF_MACS:-1}"
 VF_MACS="${VF_MACS:-}"
@@ -36,6 +38,7 @@ Environment:
   FW_NUM_OF_VFS=...     Firmware NUM_OF_VFS target. Default: 32.
   ROCE_MODE=...         mlx4 roce_mode value. Default: 2.
   UD_GID_TYPE=...       mlx4 ud_gid_type value. Default: 2.
+  PORT_TYPE_ARRAY=...   mlx4 port_type_array value. Default: 2,2.
   ASSIGN_VF_MACS=0|1    Assign stable VF MACs. Default: 1.
   VF_MACS=...           Optional comma-separated VF MAC list.
   REPROBE_VFS=0|1        Rebind VFs after MAC/VLAN assignment. Default: 1.
@@ -86,6 +89,28 @@ need_cmd() {
                echo "error: missing command: $1" >&2
                exit 1
        fi
+}
+
+ensure_initramfs_modules() {
+       local modules_file="/etc/initramfs-tools/modules"
+       local begin="# mlx-research begin"
+       local end="# mlx-research end"
+
+       touch "$modules_file"
+       if grep -q "^${begin}$" "$modules_file"; then
+               sed -i "/^${begin}$/,/^${end}$/d" "$modules_file"
+       fi
+
+       {
+               printf '%s\n' "$begin"
+               printf '%s\n' mlx_compat
+               printf '%s\n' ib_core
+               printf 'mlx4_core num_vfs=%s,0,0 probe_vf=%s,0,0 port_type_array=%s roce_mode=%s ud_gid_type=%s enable_sys_tune=1 log_num_mgm_entry_size=%s\n' \
+                       "$NUM_VFS" "$NUM_VFS" "$PORT_TYPE_ARRAY" "$ROCE_MODE" "$UD_GID_TYPE" "$LOG_NUM_MGM_ENTRY_SIZE"
+               printf '%s\n' mlx4_en
+               printf '%s\n' mlx4_ib
+               printf '%s\n' "$end"
+       } >>"$modules_file"
 }
 
 vf_mac_from_pf() {
@@ -349,6 +374,7 @@ EOF3
 
 run systemctl daemon-reload
 run systemctl enable cx3pro-sriov-vfs.service
+ensure_initramfs_modules
 run update-initramfs -u
 
 echo
