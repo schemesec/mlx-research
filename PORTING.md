@@ -213,9 +213,12 @@ current full-OFED install directory out of the module search path if present,
 and removes the old replacement-stack `ib_ipoib` blacklist. It then checks
 module resolution for `mlx4_*`, `ib_ipoib`, `nvme-rdma`, and `nvmet-rdma`.
 
-This is still only a build probe. It has not been installed or boot-tested in
-the stock-RDMA architecture, and RSS/QP-group experimental verbs are currently
-not wired into the stock-RDMA object model.
+The first pvs3 install attempt passed dependency checks, including stock
+`nvmet-rdma` resolution, but the next boot hung at mlx4 VF bring-up. The
+installer is now blocked by default and requires
+`MLX_RESEARCH_ALLOW_BROKEN_STOCK_RDMA_INSTALL=1` for any non-build-only install.
+RSS/QP-group experimental verbs are also not wired into the stock-RDMA object
+model.
 
 ## Next Implementation Direction
 

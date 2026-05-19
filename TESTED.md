@@ -98,7 +98,8 @@ Important known gap:
 - Stock Proxmox `nvme-rdma.ko` and `nvmet-rdma.ko` do not work with the ported
   OFED RDMA core. A direct `modprobe` test produced real symbol-version and
   missing-symbol failures.
-- A stock-RDMA ABI direction is now build-proven for the matched
-  `mlx_compat`/`mlx4_core`/`mlx4_en`/`mlx4_ib` module set, but it has not been
-  installed or boot-tested. That direction is the preferred path for using stock
-  Proxmox upper modules such as `nvme-rdma`, `nvmet-rdma`, and `ib_ipoib`.
+- A stock-RDMA ABI direction is build-proven for the matched
+  `mlx_compat`/`mlx4_core`/`mlx4_en`/`mlx4_ib` module set. Its first install
+  attempt passed dependency checks and stock `nvmet-rdma` resolution, but the
+  next boot hung during mlx4 VF bring-up. Treat that installer as broken until
+  the boot hang is root-caused.

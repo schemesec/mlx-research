@@ -149,15 +149,19 @@ Build-only probe:
 ./build-stock-rdma-probe.sh
 ```
 
-Experimental install:
+Experimental install is blocked by default. The first pvs3 boot test with
+this path hung during mlx4 VF bring-up after dependency checks passed. Use the
+probe script for compile testing only unless you are deliberately debugging that
+boot hang.
+
+Intentional override form:
 
 ```bash
-./install-stock-rdma-pve7.sh
+MLX_RESEARCH_ALLOW_BROKEN_STOCK_RDMA_INSTALL=1 ./install-stock-rdma-pve7.sh
 reboot
 ```
 
 That installer moves the full-OFED install directory out of the module search
 path if present, removes the old `ib_ipoib` blacklist written by the
 replacement-stack installer, and checks that stock `ib_ipoib`, `nvme-rdma`, and
-`nvmet-rdma` can resolve. It has been build-tested only; it has not yet been
-boot-tested as the active pvs3 driver path.
+`nvmet-rdma` can resolve. It is not validated as a bootable pvs3 driver path.

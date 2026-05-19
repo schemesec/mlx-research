@@ -22,6 +22,10 @@ Build and install the experimental stock-RDMA ABI mlx4 module set for
 Proxmox VE 7. This installs only mlx_compat/mlx4 modules and leaves stock
 ib_core, rdma_cm, ib_uverbs, ib_ipoib, nvme-rdma, and nvmet-rdma in place.
 
+WARNING: this installer is blocked by default. On pvs3 it installed and passed
+module dependency checks, but the next boot hung during mlx4 VF bring-up.
+Use build-stock-rdma-probe.sh for compile testing.
+
 Options:
   --build-only       Build modules but do not install into /lib/modules.
   --no-build         Install previously built modules from PROBE_DIR.
@@ -34,6 +38,8 @@ Environment:
   JOBS=...           Parallel build jobs. Default: nproc.
   PROBE_DIR=...      Throwaway stock-RDMA build tree. Default:
                      /tmp/mlx-research-stock-rdma-install
+  MLX_RESEARCH_ALLOW_BROKEN_STOCK_RDMA_INSTALL=1
+                     Required for any non-build-only install attempt.
   INSTALL_DIR=...    Module install directory. Default:
                      /lib/modules/\$KVER/updates/mlx-research-stock-rdma
   CONFLICT_DIR=...   Existing full-OFED install directory to move aside.
@@ -167,6 +173,16 @@ fi
 
 if [ "$BUILD_ONLY" -ne 1 ] && [ "$(id -u)" -ne 0 ]; then
 	log "error: installing modules requires root"
+	exit 1
+fi
+
+if [ "$BUILD_ONLY" -ne 1 ] &&
+   [ "${MLX_RESEARCH_ALLOW_BROKEN_STOCK_RDMA_INSTALL:-0}" != "1" ]; then
+	log "error: stock-RDMA install is blocked by default"
+	log "reason: the first pvs3 boot test hung during mlx4 VF bring-up"
+	log "use ./build-stock-rdma-probe.sh for compile-only testing"
+	log "to override intentionally, set:"
+	log "  MLX_RESEARCH_ALLOW_BROKEN_STOCK_RDMA_INSTALL=1"
 	exit 1
 fi
 
