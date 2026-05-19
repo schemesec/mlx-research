@@ -140,8 +140,13 @@ static const char mlx4_ib_version[] =
 static int dr_active;
 
 static void do_slave_init(struct mlx4_ib_dev *ibdev, int slave, int do_init);
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 static enum rdma_link_layer mlx4_ib_port_link_layer(struct ib_device *device,
 						    u32 port_num);
+#else
+static enum rdma_link_layer mlx4_ib_port_link_layer(struct ib_device *device,
+						    u8 port_num);
+#endif
 
 static int _mlx4_ib_mcg_detach(struct ib_qp *ibqp, union ib_gid *gid, u16 lid,
 			       int count);
@@ -194,7 +199,11 @@ static int num_ib_ports(struct mlx4_dev *dev)
 	return ib_ports;
 }
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 static struct net_device *mlx4_ib_get_netdev(struct ib_device *device, u32 port_num)
+#else
+static struct net_device *mlx4_ib_get_netdev(struct ib_device *device, u8 port_num)
+#endif
 {
 	struct mlx4_ib_dev *ibdev = to_mdev(device);
 	struct net_device *dev;
@@ -696,7 +705,11 @@ out:
 }
 
 static enum rdma_link_layer
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 mlx4_ib_port_link_layer(struct ib_device *device, u32 port_num)
+#else
+mlx4_ib_port_link_layer(struct ib_device *device, u8 port_num)
+#endif
 {
 	struct mlx4_dev *dev = to_mdev(device)->dev;
 
@@ -873,8 +886,13 @@ int __mlx4_ib_query_port(struct ib_device *ibdev, u8 port,
 	return err;
 }
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 static int mlx4_ib_query_port(struct ib_device *ibdev, u32 port,
 			      struct ib_port_attr *props)
+#else
+static int mlx4_ib_query_port(struct ib_device *ibdev, u8 port,
+			      struct ib_port_attr *props)
+#endif
 {
 	/* returns host view */
 	return __mlx4_ib_query_port(ibdev, port, props, 0);
@@ -936,8 +954,13 @@ out:
 	return err;
 }
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 static int mlx4_ib_query_gid(struct ib_device *ibdev, u32 port, int index,
 			     union ib_gid *gid)
+#else
+static int mlx4_ib_query_gid(struct ib_device *ibdev, u8 port, int index,
+			     union ib_gid *gid)
+#endif
 {
 	if (rdma_protocol_ib(ibdev, port))
 		return __mlx4_ib_query_gid(ibdev, port, index, gid, 0);
@@ -1037,7 +1060,11 @@ out:
 	return err;
 }
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 static int mlx4_ib_query_pkey(struct ib_device *ibdev, u32 port, u16 index, u16 *pkey)
+#else
+static int mlx4_ib_query_pkey(struct ib_device *ibdev, u8 port, u16 index, u16 *pkey)
+#endif
 {
 	return __mlx4_ib_query_pkey(ibdev, port, index, pkey, 0);
 }
@@ -1104,8 +1131,13 @@ static int mlx4_ib_SET_PORT(struct mlx4_ib_dev *dev, u8 port, int reset_qkey_vio
 	return err;
 }
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 static int mlx4_ib_modify_port(struct ib_device *ibdev, u32 port, int mask,
 			       struct ib_port_modify *props)
+#else
+static int mlx4_ib_modify_port(struct ib_device *ibdev, u8 port, int mask,
+			       struct ib_port_modify *props)
+#endif
 {
 	struct mlx4_ib_dev *mdev = to_mdev(ibdev);
 	u8 is_eth = mdev->dev->caps.port_type[port] == MLX4_PORT_TYPE_ETH;
@@ -1309,10 +1341,16 @@ static int mlx4_ib_alloc_pd(struct ib_pd *ibpd, struct ib_udata *udata)
 	return 0;
 }
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 static int mlx4_ib_dealloc_pd(struct ib_pd *pd, struct ib_udata *udata)
+#else
+static void mlx4_ib_dealloc_pd(struct ib_pd *pd, struct ib_udata *udata)
+#endif
 {
 	mlx4_pd_free(to_mdev(pd->device)->dev, to_mpd(pd)->pdn);
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 	return 0;
+#endif
 }
 
 #ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
@@ -2892,8 +2930,13 @@ static void mlx4_ib_free_eqs(struct mlx4_dev *dev, struct mlx4_ib_dev *ibdev)
 	ibdev->eq_table = NULL;
 }
 
+#ifdef CONFIG_MLX4_IB_STOCK_RDMA_ABI
 static int mlx4_port_immutable(struct ib_device *ibdev, u32 port_num,
 			       struct ib_port_immutable *immutable)
+#else
+static int mlx4_port_immutable(struct ib_device *ibdev, u8 port_num,
+			       struct ib_port_immutable *immutable)
+#endif
 {
 	struct ib_port_attr attr;
 	struct mlx4_ib_dev *mdev = to_mdev(ibdev);
